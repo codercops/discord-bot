@@ -20,6 +20,7 @@ const repos = REPOS.split(',').map((r) => r.trim());
 const longestRoadmap = Math.max(...ROADMAPS.map((r) => r.days));
 
 const commands = [
+  { name: 'help', description: 'Show the commands and what they do' },
   {
     name: 'issues',
     description: 'List open starter issues nobody has claimed yet',

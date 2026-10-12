@@ -6,7 +6,7 @@ import type { MessagePayload } from "./discord";
 import { countMergedPrs, GithubError, listStarterIssues } from "./github";
 import { getLeaderboard } from "./leaderboard";
 import { getLink, linkedMembers, removeLink } from "./links";
-import { checkinReply, leaderboardMessage, linkPrompt, meReply, starterIssuesReply, streaksMessage } from "./messages";
+import { checkinReply, helpReply, leaderboardMessage, linkPrompt, meReply, starterIssuesReply, streaksMessage } from "./messages";
 import { authorizeUrl, linkingEnabled, signState } from "./oauth";
 import { grantEarnedRoles, isMaintainer, removeTierRoles } from "./roles";
 import { currentProgram, findProgram, leaderboardUrl, programStatus } from "./programs";
@@ -34,6 +34,9 @@ export async function runCommand(
   const option = (name: string) => data.options?.find((o) => o.name === name)?.value;
   try {
     switch (data.name) {
+      case "help": {
+        return helpReply(linkingEnabled(env));
+      }
       case "checkin": {
         if (!user) return { content: "Run this inside the server, not in a DM." };
         const day = option("day");

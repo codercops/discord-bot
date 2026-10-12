@@ -5,6 +5,7 @@ The bot behind the open source channels on the [CODERCOPS Discord server](https:
 - **Releases** go to `#releases` with their notes.
 - **Starter issues** (`good first issue` and `help wanted`) go to `#starter-issues`. Each issue gets one message, and the bot edits it when the issue is claimed, freed up or closed, so the channel always shows what's really available.
 - **Merged PRs** get a shoutout in `#merged-prs`, with the author's count in the running program. The merge that takes someone to the program's minimum says they now qualify.
+- **`/help`** lists every command with a line saying what it does, and points at this repo for bug reports and ideas.
 - **`/issues`** lists the open starter issues nobody has claimed yet. **`/leaderboard`** shows who has the most merged PRs in a contributor program.
 - A **weekly leaderboard** is posted while a program is running, and the final results once it ends.
 - Every program has a public page, for example [CODERCOPS October 2026](https://oss.codercops.com/leaderboard/2026-10), with a JSON version next to it.
