@@ -80,9 +80,12 @@ export function isStarterIssue(labels: string[], cfg: Config): boolean {
   return names.some((n) => cfg.starterLabels.includes(n)) && !names.includes("blocked");
 }
 
-export function starterState(issue: IssuesEvent["issue"]): StarterState {
+export function starterState(issue: IssuesEvent["issue"], cfg?: Config, action?: string): StarterState {
+  if (action === "deleted" || action === "transferred") return { kind: "unavailable" };
   if (issue.state === "closed") return { kind: "done" };
-  const assignee = issue.assignees[0];
+  const labels = (issue.labels ?? []).map((l) => l.name);
+  if (cfg && !isStarterIssue(labels, cfg)) return { kind: "unavailable" };
+  const assignee = issue.assignees?.[0];
   return assignee ? { kind: "claimed", by: assignee.login } : { kind: "open" };
 }
 
@@ -95,7 +98,7 @@ interface FeedRecord {
 // claimed, released or closed, so the feed always shows what's really free.
 async function onIssue(e: IssuesEvent, env: Env, cfg: Config): Promise<string> {
   if (!ours(cfg, e.repository) || e.issue.pull_request) return "ignored issue";
-  const labels = e.issue.labels.map((l) => l.name);
+  const labels = (e.issue.labels ?? []).map((l) => l.name);
   const issue: StarterIssue = {
     repo: e.repository.name,
     number: e.issue.number,
@@ -105,7 +108,7 @@ async function onIssue(e: IssuesEvent, env: Env, cfg: Config): Promise<string> {
   };
   const key = `issue:${issue.repo}#${issue.number}`;
   const record = await env.STATE.get<FeedRecord>(key, "json");
-  const state = starterState(e.issue);
+  const state = starterState(e.issue, cfg, e.action);
 
   if (!record) {
     // A new post needs a reason: a starter label was just added, or the issue

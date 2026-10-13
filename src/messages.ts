@@ -7,7 +7,7 @@ import type { StarterIssue } from "./github";
 import type { Leaderboard, LeaderboardRow } from "./leaderboard";
 import type { ProgramStatus } from "./programs";
 
-const COLOR = { open: 0x2ea043, claimed: 0x8b949e, done: 0x8957e5, release: 0x1f6feb, merged: 0x8957e5, gold: 0xd4a72c };
+const COLOR = { open: 0x2ea043, claimed: 0x8b949e, done: 0x8957e5, unavailable: 0xf85149, release: 0x1f6feb, merged: 0x8957e5, gold: 0xd4a72c };
 
 // Discord's limits: embed title 256, embed description 4096.
 export function truncate(text: string, max: number): string {
@@ -40,7 +40,7 @@ export function releaseMessage(repo: string, release: { name: string | null; tag
   };
 }
 
-export type StarterState = { kind: "open" } | { kind: "claimed"; by: string } | { kind: "done" };
+export type StarterState = { kind: "open" } | { kind: "claimed"; by: string } | { kind: "done" } | { kind: "unavailable" };
 
 export function starterIssueMessage(issue: StarterIssue, state: StarterState): MessagePayload {
   const labels = issue.labels.join(", ");
@@ -49,13 +49,15 @@ export function starterIssueMessage(issue: StarterIssue, state: StarterState): M
       ? "Open. Comment on the issue to claim it (one issue at a time)."
       : state.kind === "claimed"
         ? `Claimed by ${escapeMarkdown(state.by)}.`
-        : "Done.";
+        : state.kind === "done"
+          ? "Done."
+          : "No longer available.";
   return {
     embeds: [
       {
         title: truncate(`${issue.repo} #${issue.number}: ${issue.title}`, 256),
         url: issue.url,
-        description: `${labels}\n${status}`,
+        description: labels ? `${labels}\n${status}` : status,
         color: COLOR[state.kind],
       },
     ],

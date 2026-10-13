@@ -41,6 +41,14 @@ describe("isStarterIssue / starterState", () => {
     expect(starterState({ ...base, assignees: [{ login: "ada" }] } as never)).toEqual({ kind: "claimed", by: "ada" });
     expect(starterState({ ...base, state: "closed" } as never)).toEqual({ kind: "done" });
   });
+
+  it("maps issue state to unavailable when not a starter issue or on deleted/transferred", () => {
+    const base = issueEvent("labeled").issue;
+    expect(starterState({ ...base, labels: [{ name: "bug" }] } as never, cfg)).toEqual({ kind: "unavailable" });
+    expect(starterState({ ...base, labels: [{ name: "good first issue" }, { name: "blocked" }] } as never, cfg)).toEqual({ kind: "unavailable" });
+    expect(starterState(base as never, cfg, "deleted")).toEqual({ kind: "unavailable" });
+    expect(starterState(base as never, cfg, "transferred")).toEqual({ kind: "unavailable" });
+  });
 });
 
 describe("starter issue feed", () => {
@@ -85,6 +93,117 @@ describe("starter issue feed", () => {
     expect(await handleGithubEvent("issues", other, env, cfg)).toBe("ignored issue");
     const fork = { ...issueEvent("labeled", {}, "good first issue"), repository: { name: "toolbelt", owner: { login: "someone" } } };
     expect(await handleGithubEvent("issues", fork, env, cfg)).toBe("ignored issue");
+    expect(fetched.discord()).toHaveLength(0);
+  });
+
+  it("marks message unavailable when the last starter label is removed, and restores to open when restored", async () => {
+    const fetched = mockFetch();
+    expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("posted starter issue");
+
+    // Remove good first issue label
+    const unlabeled = issueEvent("unlabeled", { labels: [{ name: "bug" }] }, "good first issue");
+    expect(await handleGithubEvent("issues", unlabeled, env, cfg)).toBe("updated starter issue (unavailable)");
+    const unavailableEdit = fetched.discord()[1];
+    expect(unavailableEdit).toMatchObject({ method: "PATCH", url: "https://discord.com/api/v10/channels/chan-issues/messages/msg-1" });
+    expect(unavailableEdit?.body.embeds[0].description).toContain("No longer available.");
+    expect(unavailableEdit?.body.embeds[0].description).not.toContain("Comment on the issue to claim it");
+    expect(unavailableEdit?.body.embeds[0].color).toBe(0xf85149);
+
+    // Restore starter label
+    const relabeled = issueEvent("labeled", { labels: [{ name: "bug" }, { name: "good first issue" }] }, "good first issue");
+    expect(await handleGithubEvent("issues", relabeled, env, cfg)).toBe("updated starter issue (open)");
+    const openEdit = fetched.discord()[2];
+    expect(openEdit?.body.embeds[0].description).toContain("Comment on the issue to claim it");
+    expect(openEdit?.body.embeds[0].color).toBe(0x2ea043);
+  });
+
+  it("marks message unavailable when blocked is added, and restores to open when blocked is removed", async () => {
+    const fetched = mockFetch();
+    expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("posted starter issue");
+
+    // Add blocked label
+    const blocked = issueEvent("labeled", { labels: [{ name: "bug" }, { name: "good first issue" }, { name: "blocked" }] }, "blocked");
+    expect(await handleGithubEvent("issues", blocked, env, cfg)).toBe("updated starter issue (unavailable)");
+    const blockedEdit = fetched.discord()[1];
+    expect(blockedEdit?.body.embeds[0].description).toContain("No longer available.");
+    expect(blockedEdit?.body.embeds[0].color).toBe(0xf85149);
+
+    // Remove blocked label
+    const unblocked = issueEvent("unlabeled", { labels: [{ name: "bug" }, { name: "good first issue" }] }, "blocked");
+    expect(await handleGithubEvent("issues", unblocked, env, cfg)).toBe("updated starter issue (open)");
+    const unblockedEdit = fetched.discord()[2];
+    expect(unblockedEdit?.body.embeds[0].description).toContain("Comment on the issue to claim it");
+    expect(unblockedEdit?.body.embeds[0].color).toBe(0x2ea043);
+  });
+
+  it("restores to claimed state when recovering from unavailable if the issue is assigned", async () => {
+    const fetched = mockFetch();
+    expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("posted starter issue");
+
+    // Assign to ada
+    const claimed = issueEvent("assigned", { assignees: [{ login: "ada" }] });
+    expect(await handleGithubEvent("issues", claimed, env, cfg)).toBe("updated starter issue (claimed)");
+
+    // Add blocked label while assigned
+    const blocked = issueEvent(
+      "labeled",
+      { assignees: [{ login: "ada" }], labels: [{ name: "bug" }, { name: "good first issue" }, { name: "blocked" }] },
+      "blocked"
+    );
+    expect(await handleGithubEvent("issues", blocked, env, cfg)).toBe("updated starter issue (unavailable)");
+    expect(fetched.discord()[2]?.body.embeds[0].description).toContain("No longer available.");
+
+    // Remove blocked label -> recovers to claimed
+    const unblocked = issueEvent(
+      "unlabeled",
+      { assignees: [{ login: "ada" }], labels: [{ name: "bug" }, { name: "good first issue" }] },
+      "blocked"
+    );
+    expect(await handleGithubEvent("issues", unblocked, env, cfg)).toBe("updated starter issue (claimed)");
+    expect(fetched.discord()[3]?.body.embeds[0].description).toContain("Claimed by ada.");
+    expect(fetched.discord()[3]?.body.embeds[0].color).toBe(0x8b949e);
+
+    // Remove last starter label while assigned
+    const unlabeled = issueEvent("unlabeled", { assignees: [{ login: "ada" }], labels: [{ name: "bug" }] }, "good first issue");
+    expect(await handleGithubEvent("issues", unlabeled, env, cfg)).toBe("updated starter issue (unavailable)");
+
+    // Restore starter label -> recovers to claimed
+    const relabeled = issueEvent(
+      "labeled",
+      { assignees: [{ login: "ada" }], labels: [{ name: "bug" }, { name: "good first issue" }] },
+      "good first issue"
+    );
+    expect(await handleGithubEvent("issues", relabeled, env, cfg)).toBe("updated starter issue (claimed)");
+    expect(fetched.discord()[5]?.body.embeds[0].description).toContain("Claimed by ada.");
+  });
+
+  it("marks message unavailable on deleted and transferred actions", async () => {
+    const fetched = mockFetch();
+    expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("posted starter issue");
+
+    // Deleted
+    expect(await handleGithubEvent("issues", issueEvent("deleted"), env, cfg)).toBe("updated starter issue (unavailable)");
+    expect(fetched.discord()[1]?.body.embeds[0].description).toContain("No longer available.");
+    expect(fetched.discord()[1]?.body.embeds[0].color).toBe(0xf85149);
+
+    // Second issue for transferred
+    const issue2 = issueEvent("labeled", { number: 125, title: "Second issue" }, "good first issue");
+    expect(await handleGithubEvent("issues", issue2, env, cfg)).toBe("posted starter issue");
+    expect(await handleGithubEvent("issues", issueEvent("transferred", { number: 125, title: "Second issue" }), env, cfg)).toBe(
+      "updated starter issue (unavailable)"
+    );
+    expect(fetched.discord()[3]?.body.embeds[0].description).toContain("No longer available.");
+    expect(fetched.discord()[3]?.body.embeds[0].color).toBe(0xf85149);
+  });
+
+  it("ignores deleted, transferred, and label changes for issues that never had a starter message", async () => {
+    const fetched = mockFetch();
+    expect(await handleGithubEvent("issues", issueEvent("unlabeled", { labels: [{ name: "bug" }] }, "good first issue"), env, cfg)).toBe("ignored issue");
+    expect(await handleGithubEvent("issues", issueEvent("labeled", { labels: [{ name: "bug" }, { name: "blocked" }] }, "blocked"), env, cfg)).toBe("ignored issue");
+    expect(await handleGithubEvent("issues", issueEvent("deleted", { labels: [{ name: "bug" }] }), env, cfg)).toBe("ignored issue");
+    expect(await handleGithubEvent("issues", issueEvent("transferred", { labels: [{ name: "bug" }] }), env, cfg)).toBe("ignored issue");
+    expect(await handleGithubEvent("issues", issueEvent("deleted"), env, cfg)).toBe("ignored issue");
+    expect(await handleGithubEvent("issues", issueEvent("transferred"), env, cfg)).toBe("ignored issue");
     expect(fetched.discord()).toHaveLength(0);
   });
 });
