@@ -48,7 +48,34 @@ export class DiscordError extends Error {
   }
 }
 
-async function botRequest<T>(
+const MAX_RETRY_SECONDS = 5;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getRetryAfter(res: Response): Promise<number | undefined> {
+  const header = res.headers.get("retry-after");
+  if (header !== null && header.trim() !== "") {
+    const val = Number(header);
+    if (Number.isFinite(val)) return val;
+  }
+  try {
+    const data = (await (res.clone ? res.clone() : res).json()) as { retry_after?: unknown };
+    if (typeof data?.retry_after === "number" && Number.isFinite(data.retry_after)) {
+      return data.retry_after;
+    }
+    if (typeof data?.retry_after === "string" && data.retry_after.trim() !== "") {
+      const val = Number(data.retry_after);
+      if (Number.isFinite(val)) return val;
+    }
+  } catch {
+    // not JSON
+  }
+  return undefined;
+}
+
+export async function botRequest<T>(
   env: Env,
   method: string,
   path: string,
@@ -62,11 +89,23 @@ async function botRequest<T>(
     "User-Agent": "DiscordBot (https://github.com/codercops/discord-bot, 0.1.0)",
   };
   if (reason) headers["X-Audit-Log-Reason"] = encodeURIComponent(reason);
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+
+  const execute = () =>
+    fetch(`${API}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+  let res = await execute();
+  if (res.status === 429) {
+    const wait = await getRetryAfter(res);
+    if (wait !== undefined && wait >= 0 && wait <= MAX_RETRY_SECONDS) {
+      await sleep(wait * 1000);
+      res = await execute();
+    }
+  }
+
   if (!res.ok) {
     throw new DiscordError(res.status, `Discord ${res.status} for ${method} ${path}`);
   }
