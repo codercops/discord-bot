@@ -112,11 +112,13 @@ async function onIssue(e: IssuesEvent, env: Env, cfg: Config): Promise<string> {
 
   if (!record) {
     // A new post needs a reason: a starter label was just added, or the issue
-    // became free again. "opened" is skipped on purpose, because GitHub also
-    // sends "labeled" for every label an issue is created with.
+    // became free again (unassigned, reopened, or no longer blocked). "opened"
+    // is skipped on purpose, because GitHub also sends "labeled" for every
+    // label an issue is created with.
     const starterLabelAdded =
       e.action === "labeled" && cfg.starterLabels.includes((e.label?.name ?? "").toLowerCase());
-    const freedUp = e.action === "unassigned" || e.action === "reopened";
+    const unblocked = e.action === "unlabeled" && (e.label?.name ?? "").toLowerCase() === "blocked";
+    const freedUp = e.action === "unassigned" || e.action === "reopened" || unblocked;
     if (!starterLabelAdded && !freedUp) return "ignored issue";
     // Only announce issues that are free to take right now.
     if (state.kind !== "open" || !isStarterIssue(labels, cfg)) return "ignored issue";
