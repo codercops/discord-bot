@@ -17,4 +17,5 @@ Closes #
 - [ ] I was assigned the linked issue
 - [ ] `npm run typecheck` and `npm test` pass
 - [ ] New behavior has a test in `test/`
+- [ ] For a bug fix: the new test fails without my change
 - [ ] No tokens or secrets in the diff
