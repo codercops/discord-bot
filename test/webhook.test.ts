@@ -87,6 +87,27 @@ describe("starter issue feed", () => {
     expect(fetched.discord()).toHaveLength(1);
   });
 
+  it("posts an issue once when blocked is removed and it has no message yet", async () => {
+    const fetched = mockFetch();
+    const unblocked = issueEvent("unlabeled", {}, "Blocked");
+    expect(await handleGithubEvent("issues", unblocked, env, cfg)).toBe("posted starter issue");
+    expect(fetched.discord()).toHaveLength(1);
+    expect(fetched.discord()[0]?.body.embeds[0].description).toContain("Comment on the issue to claim it");
+    expect(await handleGithubEvent("issues", unblocked, env, cfg)).toBe("updated starter issue (open)");
+    expect(fetched.discord().filter((c) => c.method === "POST")).toHaveLength(1);
+  });
+
+  it("does not post when blocked is removed from an issue that isn't free", async () => {
+    const fetched = mockFetch();
+    const assigned = issueEvent("unlabeled", { assignees: [{ login: "ada" }] }, "blocked");
+    expect(await handleGithubEvent("issues", assigned, env, cfg)).toBe("ignored issue");
+    const closed = issueEvent("unlabeled", { state: "closed" }, "blocked");
+    expect(await handleGithubEvent("issues", closed, env, cfg)).toBe("ignored issue");
+    const notStarter = issueEvent("unlabeled", { labels: [{ name: "bug" }] }, "blocked");
+    expect(await handleGithubEvent("issues", notStarter, env, cfg)).toBe("ignored issue");
+    expect(fetched.discord()).toHaveLength(0);
+  });
+
   it("ignores repos outside the configured list", async () => {
     const fetched = mockFetch();
     const other = { ...issueEvent("labeled", {}, "good first issue"), repository: { name: "secret-repo", owner: { login: "codercops" } } };
