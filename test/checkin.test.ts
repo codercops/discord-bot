@@ -231,6 +231,61 @@ describe("/checkin", () => {
   });
 });
 
+describe("/streaks roadmap option", () => {
+  let env = makeEnv();
+  let cfg = getConfig(env);
+  const user = { id: "u1", name: "Ada" };
+  const streaks = (options: { name: string; value: string | number }[], when: string) =>
+    runCommand({ name: "streaks", options }, user, env, cfg, new Date(when));
+
+  beforeEach(() => {
+    env = makeEnv();
+    cfg = getConfig(env);
+  });
+
+  it("shows only the chosen roadmap when the option is given", async () => {
+    await runCommand({ name: "checkin", options: [{ name: "roadmap", value: ai.id }] }, user, env, cfg, new Date("2026-10-11T08:00:00Z"));
+    await runCommand({ name: "checkin", options: [{ name: "roadmap", value: genai.id }] }, user, env, cfg, new Date("2026-10-11T08:05:00Z"));
+    mockFetch();
+    const reply = await streaks([{ name: "roadmap", value: ai.id }], "2026-10-11T09:00:00Z");
+
+    expect(reply.embeds).toHaveLength(1);
+    expect(reply.embeds?.[0]?.title).toBe(ai.name);
+  });
+
+  it("is unchanged without the option", async () => {
+    await runCommand({ name: "checkin", options: [{ name: "roadmap", value: ai.id }] }, user, env, cfg, new Date("2026-10-11T08:00:00Z"));
+    await runCommand({ name: "checkin", options: [{ name: "roadmap", value: genai.id }] }, user, env, cfg, new Date("2026-10-11T08:05:00Z"));
+    mockFetch();
+    const reply = await streaks([], "2026-10-11T09:00:00Z");
+
+    expect(reply.embeds).toHaveLength(2);
+  });
+
+  it("names the roadmap when the chosen one has no check-ins", async () => {
+    await runCommand({ name: "checkin", options: [{ name: "roadmap", value: ai.id }] }, user, env, cfg, new Date("2026-10-11T08:00:00Z"));
+    mockFetch();
+    const reply = await streaks([{ name: "roadmap", value: genai.id }], "2026-10-11T09:00:00Z");
+
+    expect(reply.embeds).toBeUndefined();
+    expect(reply.content).toContain(`Nobody has checked in on **${genai.name}** yet`);
+  });
+
+  it("answers an unknown roadmap the same way /checkin does", async () => {
+    mockFetch();
+    const unknown = await streaks([{ name: "roadmap", value: "not-a-roadmap" }], "2026-10-11T09:00:00Z");
+    const unknownCheckin = await runCommand(
+      { name: "checkin", options: [{ name: "roadmap", value: "not-a-roadmap" }] },
+      user,
+      env,
+      cfg,
+      new Date("2026-10-11T09:00:00Z"),
+    );
+
+    expect(unknown.content).toBe(unknownCheckin.content);
+  });
+});
+
 describe("weekly streak board", () => {
   const run = (env: ReturnType<typeof makeEnv>, when: string) =>
     worker.scheduled({ cron: DAILY_CRON, scheduledTime: Date.parse(when), noRetry() {} } as ScheduledController, env);

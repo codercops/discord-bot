@@ -249,10 +249,13 @@ export function checkinReply(result: CheckinResult, roadmap: Roadmap, threadId?:
 export function streaksMessage(
   cfg: Config,
   ranked: (CheckinRecord & { live: number })[],
-  opts: { limit?: number } = {}
+  opts: { limit?: number; roadmap?: string } = {}
 ): MessagePayload {
+  const wanted = opts.roadmap
+    ? cfg.roadmaps.filter((r) => r.name === opts.roadmap)
+    : cfg.roadmaps;
   const embeds: Embed[] = [];
-  for (const roadmap of cfg.roadmaps) {
+  for (const roadmap of wanted) {
     const rows = ranked.filter((r) => r.roadmap === roadmap.id);
     if (rows.length === 0) continue;
     const lines = rows.slice(0, opts.limit ?? 10).map((r, i) => {
@@ -263,6 +266,9 @@ export function streaksMessage(
     embeds.push({ title: roadmap.name, url: roadmap.url, description: lines.join("\n"), color: COLOR.gold });
   }
   if (embeds.length === 0) {
+    if (opts.roadmap) {
+      return { content: `Nobody has checked in on **${opts.roadmap}** yet. Run \`/checkin\` to start your streak.` };
+    }
     return { content: "Nobody has checked in yet. Run `/checkin` to start your streak." };
   }
   return { content: "Learning streaks. Check in every day with `/checkin` to keep yours alive.", embeds };

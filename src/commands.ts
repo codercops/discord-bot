@@ -54,6 +54,14 @@ export async function runCommand(
       }
       case "streaks": {
         const today = localDate(now, cfg.checkinUtcOffsetMinutes);
+        const pickedRoadmap = option("roadmap");
+        if (pickedRoadmap !== undefined) {
+          const roadmap = cfg.roadmaps.find((r) => r.id === String(pickedRoadmap));
+          if (!roadmap) return { content: "I don't know that roadmap. Pick one from the list." };
+          return streaksMessage(cfg, rankStreaks(await listCheckins(env), today), {
+            roadmap: roadmap.name,
+          });
+        }
         return streaksMessage(cfg, rankStreaks(await listCheckins(env), today));
       }
       case "issues": {

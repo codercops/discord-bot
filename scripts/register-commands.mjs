@@ -79,7 +79,19 @@ const commands = [
       },
     ],
   },
-  { name: 'streaks', description: 'Show the learning streaks for every roadmap' },
+  {
+    name: 'streaks',
+    description: 'Show the learning streaks for every roadmap',
+    options: [
+      {
+        name: 'roadmap',
+        description: 'Only show this roadmap',
+        type: 3,
+        required: false,
+        choices: ROADMAPS.map((r) => ({ name: r.name, value: r.id })),
+      },
+    ],
+  },
 ];
 
 // These only make sense once linking is switched on in wrangler.jsonc.
