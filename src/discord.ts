@@ -61,7 +61,7 @@ async function getRetryAfter(res: Response): Promise<number | undefined> {
     if (Number.isFinite(val)) return val;
   }
   try {
-    const data = (await (res.clone ? res.clone() : res).json()) as { retry_after?: unknown };
+    const data = (await res.clone().json()) as { retry_after?: unknown };
     if (typeof data?.retry_after === "number" && Number.isFinite(data.retry_after)) {
       return data.retry_after;
     }

@@ -40,6 +40,28 @@ describe("Discord requests", () => {
     expect(fetched.discord()[1]?.body).toEqual({ content: "hello" });
   });
 
+  it("waits the full retry delay before sending the second request", async () => {
+    let attempts = 0;
+    const fetched = mockFetch(undefined, () => {
+      attempts++;
+      if (attempts === 1) {
+        return jsonResponse({ message: "You are being rate limited." }, 429, { "Retry-After": "2" });
+      }
+      return jsonResponse({ id: "msg-retry" }, 200);
+    });
+
+    const promise = botRequest<{ id: string }>(env, "POST", "/channels/123/messages", { content: "hello" });
+
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(fetched.discord()).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await promise;
+
+    expect(result).toEqual({ id: "msg-retry" });
+    expect(fetched.discord()).toHaveLength(2);
+  });
+
   it("retries once when Discord answers 429 with a short JSON retry_after and succeeds", async () => {
     let attempts = 0;
     const fetched = mockFetch(undefined, () => {
