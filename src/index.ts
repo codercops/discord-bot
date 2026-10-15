@@ -285,7 +285,7 @@ export default {
     if (person) return handleContributor(request, env, ctx, person[1]!, person[2]!, person[3] !== undefined);
     if (request.method === "GET" && pathname === "/link/callback") return handleLinkCallback(request, env);
     if (request.method === "GET" && pathname === "/") {
-      return json({ name: "codercops-discord-bot", source: "https://github.com/codercops/discord-bot" });
+      return json({ name: "codercops-discord-bot", source: "https://github.com/codercops/discord-bot", commit: env.GIT_SHA || "dev" });
     }
     return new Response("not found", { status: 404 });
   },

@@ -9,7 +9,7 @@ name: Claim check
 # PR's code, and its token can only read.
 on:
   pull_request_target:
-    branches: [main]
+    branches: [develop]
     types: [opened, edited, reopened, synchronize]
 
 permissions:

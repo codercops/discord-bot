@@ -141,6 +141,10 @@ DISCORD_BOT_TOKEN=...
 GITHUB_WEBHOOK_SECRET=...
 ```
 
+## Releases
+
+Our copy runs from the `production` branch. Cloudflare Workers Builds deploys it whenever `production` changes, with `npm run deploy:production`, which hands the Worker the commit it built. The root of the workers.dev address shows that commit as `commit` (`"dev"` for any other deploy). Changes land on `develop` first and reach `production` in a release PR. [CONTRIBUTING.md](./CONTRIBUTING.md#branching-and-releases) has the details.
+
 ## Running your own copy
 
 1. Create a Discord application with a bot user and add it to your server with the `bot` and `applications.commands` scopes. It needs View Channels, Send Messages, Embed Links and Read Message History in the channels it posts to. The welcome posts and the roles are optional and need more: see the two sections above.

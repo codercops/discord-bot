@@ -111,6 +111,8 @@ export interface Env {
   ROADMAPS: Roadmap[] | string;
   /** Offset of the community's time zone from UTC, in minutes. Decides when a check-in day ends. */
   CHECKIN_UTC_OFFSET_MINUTES: string;
+  /** Set by the production deploy (`npm run deploy:production`) to the commit it built. */
+  GIT_SHA?: string;
 }
 
 export interface Config {

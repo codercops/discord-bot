@@ -56,8 +56,19 @@ npm run typecheck && npm test
 - Keep logic out of the request handlers. Message text lives in `src/messages.ts` and has no I/O, which is why it's easy to test. New behavior needs a test in `test/`.
 - The bot doesn't ping people and never posts anything that isn't public on GitHub already. The one exception is the welcome post, which notifies the new member it's for. Please keep it that way.
 - Never commit tokens or secrets. Local secrets go in `.dev.vars`, which is gitignored.
-- Use conventional commit titles (`feat:`, `fix:`, `docs:`, `chore:`), and open the pull request against `main` with `Closes #<issue number>`.
+- Use conventional commit titles (`feat:`, `fix:`, `docs:`, `chore:`), branch off `develop`, and open the pull request against `develop` with `Closes #<issue number>`.
 
 CI runs the typecheck and the tests on every pull request. A second check ("Claim check") fails if the linked issue isn't assigned to you. A third ("Description check") fails while the "How I tested this" or "AI assistance" section of the PR description is missing or empty.
 
 You can't run the bot against our Discord server, and you don't need to. The tests replace Discord, GitHub and KV with fakes. For the leaderboard page, `npm run dev` serves it at `http://localhost:8787/leaderboard` with no secrets.
+
+## Branching and releases
+
+The bot follows the same flow as toolbelt:
+
+- `develop` is the default branch. Branch off it and open your PR against it. PRs are squash merged.
+- `production` is what's running. Nothing is committed to it directly.
+- A release is a PR from `develop` into `production`, merged as a merge commit so `production` keeps the history. It bumps the version in `package.json` and gets a `release:minor` or `release:major` label when it's more than a patch.
+- When `production` changes, Cloudflare Workers Builds deploys the bot. The Release workflow then tags `vX.Y.Z` and publishes a GitHub release, which the bot posts in `#releases`. It waits until the live bot reports the new commit, checks that the Discord and GitHub endpoints still refuse unsigned requests, and syncs `develop` back up to `production`.
+
+There's no develop deployment. A second copy of the bot would answer in the same Discord server and run the daily and welcome jobs twice. So a merge into `develop` changes nothing on Discord until the next release.

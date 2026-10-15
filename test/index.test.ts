@@ -47,9 +47,16 @@ describe("routing", () => {
     // On any host but the public one, the root says what this is.
     const home = await worker.fetch(new Request("https://bot.internal/"), env, ctx);
     expect(home.status).toBe(200);
-    expect(await home.json()).toMatchObject({ name: "codercops-discord-bot" });
+    expect(await home.json()).toMatchObject({ name: "codercops-discord-bot", commit: "dev" });
     expect((await worker.fetch(new Request("https://bot.example/nope"), env, ctx)).status).toBe(404);
     expect((await worker.fetch(new Request("https://bot.example/github"), env, ctx)).status).toBe(404);
+  });
+
+  it("names the deployed commit, which the release smoke test waits for", async () => {
+    const { ctx } = makeCtx();
+    const sha = "87d8b5095d31988ba530e76443d07a889fea70b5";
+    const home = await worker.fetch(new Request("https://bot.internal/"), makeEnv({ GIT_SHA: sha }), ctx);
+    expect(await home.json()).toMatchObject({ commit: sha });
   });
 });
 

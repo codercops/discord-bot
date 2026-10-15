@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:production": "wrangler deploy --var GIT_SHA:${WORKERS_CI_COMMIT_SHA:-dev}",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "register": "node scripts/register-commands.mjs"
