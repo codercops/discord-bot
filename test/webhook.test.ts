@@ -40,6 +40,14 @@ describe("isStarterIssue / starterState", () => {
     expect(starterState(base as never)).toEqual({ kind: "open" });
     expect(starterState({ ...base, assignees: [{ login: "ada" }] } as never)).toEqual({ kind: "claimed", by: "ada" });
     expect(starterState({ ...base, state: "closed" } as never)).toEqual({ kind: "done" });
+    expect(starterState({ ...base, state: "closed", state_reason: null } as never)).toEqual({ kind: "done" });
+    expect(starterState({ ...base, state: "closed", state_reason: "completed" } as never)).toEqual({ kind: "done" });
+  });
+
+  it("maps an issue closed for any other reason to unavailable", () => {
+    const base = issueEvent("labeled").issue;
+    expect(starterState({ ...base, state: "closed", state_reason: "not_planned" } as never)).toEqual({ kind: "unavailable" });
+    expect(starterState({ ...base, state: "closed", state_reason: "duplicate" } as never)).toEqual({ kind: "unavailable" });
   });
 
   it("maps issue state to unavailable when not a starter issue or on deleted/transferred", () => {
@@ -69,6 +77,25 @@ describe("starter issue feed", () => {
     expect(await handleGithubEvent("issues", issueEvent("unassigned"), env, cfg)).toBe("updated starter issue (open)");
     expect(await handleGithubEvent("issues", issueEvent("closed", { state: "closed" }), env, cfg)).toBe("updated starter issue (done)");
     expect(fetched.discord().filter((c) => c.method === "POST")).toHaveLength(1);
+  });
+
+  it("says no longer available for an issue closed as not planned, and brings it back on reopen", async () => {
+    const fetched = mockFetch();
+    expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("posted starter issue");
+
+    const notPlanned = issueEvent("closed", { state: "closed", state_reason: "not_planned" });
+    expect(await handleGithubEvent("issues", notPlanned, env, cfg)).toBe("updated starter issue (unavailable)");
+    expect(fetched.discord()[1]?.body.embeds[0].description).toContain("No longer available.");
+
+    const reopened = issueEvent("reopened", { state_reason: "reopened" });
+    expect(await handleGithubEvent("issues", reopened, env, cfg)).toBe("updated starter issue (open)");
+
+    const claimed = issueEvent("assigned", { assignees: [{ login: "ada" }], state_reason: "reopened" });
+    expect(await handleGithubEvent("issues", claimed, env, cfg)).toBe("updated starter issue (claimed)");
+
+    const completed = issueEvent("closed", { state: "closed", state_reason: "completed", assignees: [{ login: "ada" }] });
+    expect(await handleGithubEvent("issues", completed, env, cfg)).toBe("updated starter issue (done)");
+    expect(fetched.discord()[4]?.body.embeds[0].description).toContain("Done.");
   });
 
   it("does not post on opened (labeled follows), for other labels, or for issues that aren't free", async () => {

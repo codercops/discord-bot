@@ -28,6 +28,7 @@ interface IssuesEvent {
     title: string;
     html_url: string;
     state: "open" | "closed";
+    state_reason?: string | null;
     labels: { name: string }[];
     assignees: { login: string }[];
     pull_request?: unknown;
@@ -82,7 +83,9 @@ export function isStarterIssue(labels: string[], cfg: Config): boolean {
 
 export function starterState(issue: IssuesEvent["issue"], cfg?: Config, action?: string): StarterState {
   if (action === "deleted" || action === "transferred") return { kind: "unavailable" };
-  if (issue.state === "closed") return { kind: "done" };
+  if (issue.state === "closed") {
+    return issue.state_reason && issue.state_reason !== "completed" ? { kind: "unavailable" } : { kind: "done" };
+  }
   const labels = (issue.labels ?? []).map((l) => l.name);
   if (cfg && !isStarterIssue(labels, cfg)) return { kind: "unavailable" };
   const assignee = issue.assignees?.[0];
