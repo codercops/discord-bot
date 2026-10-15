@@ -95,6 +95,17 @@ export function starterState(issue: IssuesEvent["issue"], cfg?: Config, action?:
 interface FeedRecord {
   messageId: string;
   state: StarterState["kind"];
+  message?: string;
+}
+
+function starterIssueSnapshot(message: ReturnType<typeof starterIssueMessage>): string {
+  const embed = message.embeds?.[0];
+  return JSON.stringify({
+    title: embed?.title,
+    url: embed?.url,
+    description: embed?.description,
+    color: embed?.color,
+  });
 }
 
 // Keeps one message per issue in #starter-issues and edits it as the issue is
@@ -127,13 +138,19 @@ async function onIssue(e: IssuesEvent, env: Env, cfg: Config): Promise<string> {
     if (!starterLabelAdded && !freedUp) return "ignored issue";
     // Only announce issues that are free to take right now.
     if (state.kind !== "open" || !isStarterIssue(labels, cfg)) return "ignored issue";
-    const messageId = await sendMessage(env, env.CHANNEL_STARTER_ISSUES, starterIssueMessage(issue, state));
-    await env.STATE.put(key, JSON.stringify({ messageId, state: state.kind } satisfies FeedRecord));
+    const message = starterIssueMessage(issue, state);
+    const snapshot = starterIssueSnapshot(message);
+    const messageId = await sendMessage(env, env.CHANNEL_STARTER_ISSUES, message);
+    await env.STATE.put(key, JSON.stringify({ messageId, state: state.kind, message: snapshot } satisfies FeedRecord));
     return "posted starter issue";
   }
 
-  await editMessage(env, env.CHANNEL_STARTER_ISSUES, record.messageId, starterIssueMessage(issue, state));
-  await env.STATE.put(key, JSON.stringify({ messageId: record.messageId, state: state.kind } satisfies FeedRecord));
+  const message = starterIssueMessage(issue, state);
+  const snapshot = starterIssueSnapshot(message);
+  if (record.message === snapshot) return "unchanged starter issue";
+
+  await editMessage(env, env.CHANNEL_STARTER_ISSUES, record.messageId, message);
+  await env.STATE.put(key, JSON.stringify({ messageId: record.messageId, state: state.kind, message: snapshot } satisfies FeedRecord));
   return `updated starter issue (${state.kind})`;
 }
 

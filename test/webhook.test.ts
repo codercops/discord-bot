@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getConfig } from "../src/config";
 import { handleGithubEvent, isStarterIssue, starterState } from "../src/webhook";
 import { makeEnv, mockFetch } from "./helpers";
@@ -79,6 +79,48 @@ describe("starter issue feed", () => {
     expect(fetched.discord().filter((c) => c.method === "POST")).toHaveLength(1);
   });
 
+  it("skips Discord edits and KV writes when only the issue body changes", async () => {
+    const fetched = mockFetch();
+    expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("posted starter issue");
+    const put = vi.spyOn(env.STATE, "put");
+    const bodyEdited = issueEvent("edited", { body: "A changed body that isn't shown in the feed." });
+
+    expect(await handleGithubEvent("issues", bodyEdited, env, cfg)).toBe("unchanged starter issue");
+    expect(fetched.discord()).toHaveLength(1);
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("edits the feed when the title, labels, or assignee changes", async () => {
+    const fetched = mockFetch();
+    expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("posted starter issue");
+
+    expect(await handleGithubEvent("issues", issueEvent("edited", { title: "Updated title" }), env, cfg)).toBe("updated starter issue (open)");
+    expect(await handleGithubEvent("issues", issueEvent("labeled", { labels: [{ name: "bug" }, { name: "good first issue" }, { name: "help wanted" }] }, "help wanted")).toBe("updated starter issue (open)");
+    expect(await handleGithubEvent("issues", issueEvent("assigned", { assignees: [{ login: "ada" }] }), env, cfg)).toBe("updated starter issue (claimed)");
+
+    expect(fetched.discord()).toHaveLength(4);
+    expect(fetched.discord()[1]?.body.embeds[0].title).toContain("Updated title");
+    expect(fetched.discord()[2]?.body.embeds[0].description).toContain("help wanted");
+    expect(fetched.discord()[3]?.body.embeds[0].description).toContain("Claimed by ada.");
+  });
+
+  it("updates legacy records without a snapshot once, then skips unchanged events", async () => {
+    const fetched = mockFetch();
+    const key = "issue:toolbelt#124";
+    await env.STATE.put(key, JSON.stringify({ messageId: "legacy-message", state: "open" }));
+    const put = vi.spyOn(env.STATE, "put");
+    const edited = issueEvent("edited", { body: "Only the body changed." });
+
+    expect(await handleGithubEvent("issues", edited, env, cfg)).toBe("updated starter issue (open)");
+    expect(fetched.discord()).toHaveLength(1);
+    expect(fetched.discord()[0]?.url).toContain("/messages/legacy-message");
+    expect(put).toHaveBeenCalledTimes(1);
+
+    expect(await handleGithubEvent("issues", edited, env, cfg)).toBe("unchanged starter issue");
+    expect(fetched.discord()).toHaveLength(1);
+    expect(put).toHaveBeenCalledTimes(1);
+  });
+
   it("says no longer available for an issue closed as not planned, and brings it back on reopen", async () => {
     const fetched = mockFetch();
     expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("posted starter issue");
@@ -120,7 +162,7 @@ describe("starter issue feed", () => {
     expect(await handleGithubEvent("issues", unblocked, env, cfg)).toBe("posted starter issue");
     expect(fetched.discord()).toHaveLength(1);
     expect(fetched.discord()[0]?.body.embeds[0].description).toContain("Comment on the issue to claim it");
-    expect(await handleGithubEvent("issues", unblocked, env, cfg)).toBe("updated starter issue (open)");
+    expect(await handleGithubEvent("issues", unblocked, env, cfg)).toBe("unchanged starter issue");
     expect(fetched.discord().filter((c) => c.method === "POST")).toHaveLength(1);
   });
 
