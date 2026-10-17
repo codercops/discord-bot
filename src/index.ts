@@ -1,4 +1,5 @@
 import { listCheckins, localDate, rankStreaks } from "./checkin";
+import pkg from "../package.json";
 import { runCommand, type CommandData, type CommandUser } from "./commands";
 import { DAILY_CRON, getConfig, WELCOME_CRON, type Config, type Env } from "./config";
 import { editInteractionReply, sendMessage } from "./discord";
@@ -285,7 +286,7 @@ export default {
     if (person) return handleContributor(request, env, ctx, person[1]!, person[2]!, person[3] !== undefined);
     if (request.method === "GET" && pathname === "/link/callback") return handleLinkCallback(request, env);
     if (request.method === "GET" && pathname === "/") {
-      return json({ name: "codercops-discord-bot", source: "https://github.com/codercops/discord-bot", commit: env.GIT_SHA || "dev" });
+      return json({ name: "codercops-discord-bot", source: "https://github.com/codercops/discord-bot", version: pkg.version, commit: env.GIT_SHA || "dev" });
     }
     return new Response("not found", { status: 404 });
   },

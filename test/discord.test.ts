@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import pkg from "../package.json";
 import { botRequest, DiscordError, sendMessage } from "../src/discord";
 import { makeEnv, mockFetch } from "./helpers";
 
@@ -191,5 +192,12 @@ describe("Discord requests", () => {
 
     expect(messageId).toBe("msg-999");
     expect(fetched.discord()).toHaveLength(2);
+  });
+
+  it("sends the real version from package.json in the Discord User-Agent", async () => {
+    const fetched = mockFetch();
+    await botRequest(env, "POST", "/channels/123/messages", { content: "hello" });
+    const call = fetched.discord()[0];
+    expect(call?.userAgent).toBe(`DiscordBot (https://github.com/codercops/discord-bot, ${pkg.version})`);
   });
 });

@@ -77,6 +77,8 @@ export interface RecordedCall {
   body: any;
   /** The Authorization header, when the call had one. */
   auth?: string;
+  /** The User-Agent header, when the call had one. */
+  userAgent?: string;
 }
 
 function parseBody(body: unknown): unknown {
@@ -103,8 +105,10 @@ export function mockFetch(
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     const method = init?.method ?? "GET";
     const body = parseBody(init?.body);
-    const auth = new Headers(init?.headers).get("Authorization") ?? undefined;
-    calls.push({ url: url.href, method, body, auth });
+    const headers = new Headers(init?.headers);
+    const auth = headers.get("Authorization") ?? undefined;
+    const userAgent = headers.get("User-Agent") ?? undefined;
+    calls.push({ url: url.href, method, body, auth, userAgent });
     if (url.hostname === "api.github.com") {
       return new Response(JSON.stringify(github(url)), { status: 200 });
     }

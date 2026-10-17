@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import pkg from "../package.json";
 import { DAILY_CRON } from "../src/config";
 import worker from "../src/index";
 import { makeEnv, mockFetch, OCTOBER } from "./helpers";
@@ -47,7 +48,7 @@ describe("routing", () => {
     // On any host but the public one, the root says what this is.
     const home = await worker.fetch(new Request("https://bot.internal/"), env, ctx);
     expect(home.status).toBe(200);
-    expect(await home.json()).toMatchObject({ name: "codercops-discord-bot", commit: "dev" });
+    expect(await home.json()).toMatchObject({ name: "codercops-discord-bot", version: pkg.version, commit: "dev" });
     expect((await worker.fetch(new Request("https://bot.example/nope"), env, ctx)).status).toBe(404);
     expect((await worker.fetch(new Request("https://bot.example/github"), env, ctx)).status).toBe(404);
   });
