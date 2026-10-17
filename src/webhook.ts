@@ -2,7 +2,7 @@
 import type { Config, Env } from "./config";
 import { editMessage, sendMessage } from "./discord";
 import { countMergedPrs, searchMergedPrs, type StarterIssue } from "./github";
-import { invalidateLeaderboard } from "./leaderboard";
+import { cacheLeaderboard, invalidateLeaderboard } from "./leaderboard";
 import { getLinkByGithub } from "./links";
 import { grantEarnedRoles } from "./roles";
 import { mergedPrMessage, releaseMessage, starterIssueMessage, type StarterState } from "./messages";
@@ -153,14 +153,16 @@ async function onPullRequest(e: PullRequestEvent, env: Env, cfg: Config): Promis
       mergedAt <= p.end
   );
   if (program) {
-    await invalidateLeaderboard(env, program);
     try {
-      // GitHub's search index can lag a few seconds behind the merge, so count
-      // the author's other PRs and add this one.
+      // GitHub's search index can lag a few seconds behind the merge, so add
+      // this event's PR before counting and caching the leaderboard.
       const login = pr.user.login.toLowerCase();
-      const others = (await searchMergedPrs(env, cfg, program)).filter(
-        (p) => p.login.toLowerCase() === login && p.url !== pr.html_url
-      );
+      const searched = await searchMergedPrs(env, cfg, program);
+      const prs = searched.some((p) => p.url === pr.html_url)
+        ? searched
+        : [...searched, { login: pr.user.login, mergedAt: mergedAt.toISOString(), url: pr.html_url }];
+      await cacheLeaderboard(env, cfg, program, prs);
+      const others = prs.filter((p) => p.login.toLowerCase() === login && p.url !== pr.html_url);
       const count = others.length + 1;
       countInWindow = {
         count,
@@ -169,7 +171,8 @@ async function onPullRequest(e: PullRequestEvent, env: Env, cfg: Config): Promis
         qualified: count === program.minPrs ? { topN: program.topN, reward: program.reward, note: program.note } : undefined,
       };
     } catch {
-      // The shoutout matters more than the count; post it without one.
+      // The shoutout matters more than the count; don't serve an old board.
+      await invalidateLeaderboard(env, program);
     }
   }
 

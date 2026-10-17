@@ -106,7 +106,8 @@ export function mockFetch(
     const auth = new Headers(init?.headers).get("Authorization") ?? undefined;
     calls.push({ url: url.href, method, body, auth });
     if (url.hostname === "api.github.com") {
-      return new Response(JSON.stringify(github(url)), { status: 200 });
+      const response = github(url);
+      return response instanceof Response ? response : new Response(JSON.stringify(response), { status: 200 });
     }
     const override = discord({ url: url.href, method, body, auth });
     if (override) return override;

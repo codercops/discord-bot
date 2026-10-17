@@ -305,6 +305,11 @@ describe("merged pull requests", () => {
     const post = fetched.discord()[0];
     expect(post?.url).toBe("https://discord.com/api/v10/channels/chan-merged/messages");
     expect(post?.body.embeds[0].description).toContain("That's their 3rd merged PR on the Hacktoberfest 2026 leaderboard.");
+    expect(fetched.calls.filter((c) => c.url.startsWith("https://api.github.com/"))).toHaveLength(1);
+    const cached = JSON.parse(env.STATE.store.get("leaderboard:v2:2026-10") ?? "{}");
+    expect(cached.rows).toEqual(
+      expect.arrayContaining([expect.objectContaining({ login: "ada", count: 3 }), expect.objectContaining({ login: "bob", count: 1 })])
+    );
   });
 
   it("doesn't double count when search already includes this PR", async () => {
@@ -314,6 +319,17 @@ describe("merged pull requests", () => {
     }));
     await handleGithubEvent("pull_request", prEvent(), env, cfg);
     expect(fetched.discord()[0]?.body.embeds[0].description).toContain("That's their 1st merged PR");
+    const cached = JSON.parse(env.STATE.store.get("leaderboard:v2:2026-10") ?? "{}");
+    expect(cached.rows).toEqual([expect.objectContaining({ login: "ada", count: 1 })]);
+  });
+
+  it("clears the cached leaderboard and still posts a shoutout when search fails", async () => {
+    await env.STATE.put("leaderboard:v2:2026-10", JSON.stringify({ rows: [], generatedAt: "earlier" }));
+    const fetched = mockFetch(() => new Response("unavailable", { status: 503 }));
+    await handleGithubEvent("pull_request", prEvent(), env, cfg);
+    expect(env.STATE.store.has("leaderboard:v2:2026-10")).toBe(false);
+    expect(fetched.discord()).toHaveLength(1);
+    expect(fetched.discord()[0]?.body.embeds[0].description).not.toContain("That's their");
   });
 
   it("says they qualify on the merge that reaches the minimum, and only on that one", async () => {

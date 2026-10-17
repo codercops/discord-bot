@@ -64,6 +64,20 @@ export interface Leaderboard {
   generatedAt: string;
 }
 
+/** Rank PRs and replace a program's cached leaderboard. */
+export async function cacheLeaderboard(env: Env, cfg: Config, program: Program, prs: MergedPr[]): Promise<Leaderboard> {
+  const board: Leaderboard = {
+    rows: rankContributors(prs, {
+      excludedUsers: cfg.excludedUsers,
+      minPrs: program.minPrs,
+      topN: program.topN,
+    }),
+    generatedAt: new Date().toISOString(),
+  };
+  await env.STATE.put(cacheKey(program), JSON.stringify(board), { expirationTtl: CACHE_TTL_SECONDS });
+  return board;
+}
+
 /** A program's leaderboard, cached in KV for a few minutes to stay inside GitHub's search rate limit. */
 export async function getLeaderboard(
   env: Env,
@@ -76,16 +90,7 @@ export async function getLeaderboard(
     if (cached) return cached;
   }
   const prs = await searchMergedPrs(env, cfg, program);
-  const board: Leaderboard = {
-    rows: rankContributors(prs, {
-      excludedUsers: cfg.excludedUsers,
-      minPrs: program.minPrs,
-      topN: program.topN,
-    }),
-    generatedAt: new Date().toISOString(),
-  };
-  await env.STATE.put(cacheKey(program), JSON.stringify(board), { expirationTtl: CACHE_TTL_SECONDS });
-  return board;
+  return cacheLeaderboard(env, cfg, program, prs);
 }
 
 export async function invalidateLeaderboard(env: Env, program: Program): Promise<void> {
