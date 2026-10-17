@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { version } from "../package.json";
 import { botRequest, DiscordError, sendMessage } from "../src/discord";
 import { makeEnv, mockFetch } from "./helpers";
 
@@ -18,6 +19,12 @@ describe("Discord requests", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("sends the version from package.json in the User-Agent", async () => {
+    const fetched = mockFetch();
+    await botRequest(env, "POST", "/channels/123/messages", { content: "hello" });
+    expect(fetched.discord()[0]?.userAgent).toBe(`DiscordBot (https://github.com/codercops/discord-bot, ${version})`);
   });
 
   it("retries once when Discord answers 429 with a short Retry-After header and succeeds", async () => {
