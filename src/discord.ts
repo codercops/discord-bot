@@ -1,3 +1,4 @@
+import { version } from "../package.json";
 import type { Env } from "./config";
 
 const API = "https://discord.com/api/v10";
@@ -86,7 +87,7 @@ export async function botRequest<T>(
   const headers: Record<string, string> = {
     Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
     "Content-Type": "application/json",
-    "User-Agent": "DiscordBot (https://github.com/codercops/discord-bot, 0.1.0)",
+    "User-Agent": `DiscordBot (https://github.com/codercops/discord-bot, ${version})`,
   };
   if (reason) headers["X-Audit-Log-Reason"] = encodeURIComponent(reason);
 

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { version } from "../package.json";
 import { DAILY_CRON } from "../src/config";
 import worker from "../src/index";
 import { makeEnv, mockFetch, OCTOBER } from "./helpers";
@@ -57,6 +58,12 @@ describe("routing", () => {
     const sha = "87d8b5095d31988ba530e76443d07a889fea70b5";
     const home = await worker.fetch(new Request("https://bot.internal/"), makeEnv({ GIT_SHA: sha }), ctx);
     expect(await home.json()).toMatchObject({ commit: sha });
+  });
+
+  it("names the running version from package.json", async () => {
+    const { ctx } = makeCtx();
+    const home = await worker.fetch(new Request("https://bot.internal/"), env, ctx);
+    expect(await home.json()).toMatchObject({ version });
   });
 });
 
