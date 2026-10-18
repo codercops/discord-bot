@@ -27,3 +27,6 @@ export function currentProgram(cfg: Config, now: Date): Program | undefined {
 
 /** The program's permanent public page. */
 export const leaderboardUrl = (cfg: Config, program: Program): string => `${cfg.publicUrl}/leaderboard/${program.id}`;
+
+// /leaderboard, /leaderboard.json, /leaderboard/{id} and /leaderboard/{id}.json
+export const LEADERBOARD_PATH = /^\/leaderboard(?:\/([a-z0-9][a-z0-9-]*))?(\.json)?$/;

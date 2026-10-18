@@ -10,7 +10,7 @@ import { leaderboardMessage, LINK_BUTTON_ID, streaksMessage } from "./messages";
 import { linkingEnabled } from "./oauth";
 import { cardSvg } from "./card";
 import { contributorPage, leaderboardJson, leaderboardPage, noticePage, standing } from "./page";
-import { currentProgram, findProgram, leaderboardUrl, programStatus } from "./programs";
+import { currentProgram, findProgram, LEADERBOARD_PATH, leaderboardUrl, programStatus } from "./programs";
 import { verifyDiscordRequest, verifyGithubSignature } from "./verify";
 import { handleGithubEvent } from "./webhook";
 import { welcomeNewMembers } from "./welcome";
@@ -258,9 +258,6 @@ async function handleContributor(
   );
   return new Response(html, { headers: { ...PAGE_HEADERS, "Cache-Control": "public, max-age=300", "Content-Security-Policy": CONTRIBUTOR_CSP } });
 }
-
-// /leaderboard, /leaderboard.json, /leaderboard/{id} and /leaderboard/{id}.json
-const LEADERBOARD_PATH = /^\/leaderboard(?:\/([a-z0-9][a-z0-9-]*))?(\.json)?$/;
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
