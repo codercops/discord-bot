@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { version } from "../package.json";
 import { DAILY_CRON } from "../src/config";
 import worker from "../src/index";
@@ -207,6 +207,7 @@ describe("POST /github", () => {
 describe("scheduled leaderboard", () => {
   const run = (when: string, cron = DAILY_CRON) =>
     worker.scheduled({ cron, scheduledTime: Date.parse(when), noRetry() {} } as ScheduledController, env);
+  afterEach(() => vi.restoreAllMocks());
 
   it("posts on Mondays while a program runs and stays quiet otherwise", async () => {
     const fetched = mockFetch();
@@ -264,6 +265,33 @@ describe("scheduled leaderboard", () => {
       "Hacktoberfest 2026 leaderboard: final results",
       "November sprint leaderboard",
     ]);
+  });
+
+  it("still posts the other programs when one of them fails, and logs which one", async () => {
+    const november = { ...OCTOBER, id: "2026-11", title: "November sprint", start: "2026-11-01T00:00:00Z", end: "2026-11-30T23:59:59Z" };
+    env = makeEnv({ PROGRAMS: [OCTOBER, november] });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetched = mockFetch((url) => {
+      if (url.searchParams.get("q")?.includes("2026-10-01")) throw new Error("GitHub is down");
+      return { total_count: 0, items: [] };
+    });
+    // Doesn't throw, so the run isn't retried with the November board already out.
+    await expect(run("2026-11-02T04:30:00Z")).resolves.toBeUndefined();
+    expect(fetched.discord().map((c) => c.body.embeds[0].title)).toEqual(["November sprint leaderboard"]);
+    expect(error).toHaveBeenCalledWith("daily post failed", "final results 2026-10", expect.any(Error));
+  });
+
+  it("tries final results that failed to post again on the next run", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let failing = true;
+    const fetched = mockFetch(undefined, () => (failing ? new Response("", { status: 500 }) : undefined));
+    await run("2026-11-01T04:30:00Z");
+    expect(env.STATE.store.has("final:2026-10")).toBe(false);
+
+    failing = false;
+    fetched.clear();
+    await run("2026-11-02T04:30:00Z");
+    expect(fetched.discord().map((c) => c.body.embeds[0].title)).toEqual(["Hacktoberfest 2026 leaderboard: final results"]);
   });
 
   it("ignores crons it doesn't know", async () => {
