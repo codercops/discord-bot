@@ -233,6 +233,16 @@ describe("GET /leaderboard", () => {
     expect(decodeURIComponent(searches[1]!.url)).toContain("merged:2026-11-01T00:00:00Z..2026-11-30T23:59:59Z");
   });
 
+  it("answers a HEAD like the GET, with the same headers and no body", async () => {
+    mockFetch(search);
+    const get = await worker.fetch(new Request("https://bot.example/leaderboard"), env, ctx);
+    const head = await worker.fetch(new Request("https://bot.example/leaderboard", { method: "HEAD" }), env, ctx);
+    expect(head.status).toBe(get.status);
+    expect(head.headers.get("Content-Type")).toBe(get.headers.get("Content-Type"));
+    expect(head.headers.get("Content-Security-Policy")).toBe(get.headers.get("Content-Security-Policy"));
+    expect(await head.text()).toBe("");
+  });
+
   it("answers 503 when GitHub is rate limiting", async () => {
     globalThis.fetch = (async () => new Response("{}", { status: 403 })) as typeof fetch;
     const res = await worker.fetch(new Request("https://bot.example/leaderboard"), env, ctx);

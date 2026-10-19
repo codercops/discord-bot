@@ -74,6 +74,32 @@ describe("routing", () => {
     const home = await worker.fetch(new Request("https://bot.internal/"), env, ctx);
     expect(await home.json()).toMatchObject({ version });
   });
+
+  it("answers a HEAD like the GET, with the same headers and no body", async () => {
+    const { ctx } = makeCtx();
+    const get = await worker.fetch(new Request("https://bot.internal/"), env, ctx);
+    const head = await worker.fetch(new Request("https://bot.internal/", { method: "HEAD" }), env, ctx);
+    expect(head.status).toBe(get.status);
+    expect(head.headers.get("Content-Type")).toBe(get.headers.get("Content-Type"));
+    expect(await head.text()).toBe("");
+  });
+
+  it("still 404s a HEAD for a path that isn't there", async () => {
+    const { ctx } = makeCtx();
+    const res = await worker.fetch(new Request("https://bot.example/nope", { method: "HEAD" }), env, ctx);
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("");
+  });
+
+  it("leaves the link callback on GET, so a HEAD never spends the code", async () => {
+    // Linking is on, so a GET here would talk to Discord.
+    const fetched = mockFetch();
+    const { ctx } = makeCtx();
+    const linking = makeEnv({ LINKING: "on", DISCORD_CLIENT_SECRET: "secret" });
+    const res = await worker.fetch(new Request("https://bot.example/link/callback?code=abc&state=xyz", { method: "HEAD" }), linking, ctx);
+    expect(res.status).toBe(404);
+    expect(fetched.calls).toHaveLength(0);
+  });
 });
 
 describe("public address", () => {

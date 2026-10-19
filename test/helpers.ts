@@ -83,6 +83,41 @@ export interface RecordedCall {
   userAgent?: string;
 }
 
+/**
+ * A stand-in for the Workers cache. Cloudflare's cache only takes GET
+ * requests, and a match without `ignoreMethod` only finds a GET entry, so a
+ * HEAD has to be re-keyed as a GET to reach the card.
+ */
+export class FakeCache {
+  /** The stored entries, keyed by address. */
+  entries = new Map<string, { body: ArrayBuffer; headers: Headers; status: number }>();
+
+  async match(request: Request, options?: { ignoreMethod?: boolean }): Promise<Response | undefined> {
+    if (!options?.ignoreMethod && request.method !== "GET") return undefined;
+    const hit = this.entries.get(request.url);
+    return hit && new Response(hit.body, { status: hit.status, headers: hit.headers });
+  }
+
+  async put(request: Request, response: Response): Promise<void> {
+    if (request.method !== "GET") throw new Error("The cache only takes GET requests");
+    this.entries.set(request.url, {
+      body: await response.arrayBuffer(),
+      headers: response.headers,
+      status: response.status,
+    });
+  }
+
+  /** The cache as the Worker sees it. */
+  readonly storage = { open: async () => this };
+}
+
+/** A context that keeps the work the Worker hands to `waitUntil`, so a test can wait for it. */
+export function makeCtx() {
+  const pending: Promise<unknown>[] = [];
+  const ctx = { waitUntil: (p: Promise<unknown>) => void pending.push(p), passThroughOnException() {} } as unknown as ExecutionContext;
+  return { ctx, settle: () => Promise.all(pending) };
+}
+
 function parseBody(body: unknown): unknown {
   if (typeof body !== "string") return undefined;
   try {

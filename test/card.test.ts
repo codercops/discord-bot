@@ -1,9 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { cardSvg, escapeXml, fitMono, progressBar } from "../src/card";
 import { getConfig } from "../src/config";
 import worker from "../src/index";
 import { contributorPage } from "../src/page";
-import { makeEnv, mockFetch } from "./helpers";
+import { FakeCache, makeCtx, makeEnv, mockFetch } from "./helpers";
 
 // The real module needs the WebAssembly rasterizer and the font files, which
 // only the Workers bundler can load. The route is tested with a stand-in.
@@ -233,5 +233,94 @@ describe("GET /leaderboard/{id}/u/{login}", () => {
     mockFetch(search);
     const html = await (await get("/leaderboard/2026-10")).text();
     expect(html).toContain('<a class="cardlink" href="/leaderboard/2026-10/u/Ada"');
+  });
+});
+
+describe("HEAD /leaderboard/{id}/u/{login}", () => {
+  let env = makeEnv();
+  const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
+  const search = () => ({
+    total_count: 1,
+    items: [{ html_url: "https://github.com/codercops/toolbelt/pull/1", user: { login: "Ada" }, pull_request: { merged_at: "2026-10-02T00:00:00Z" } }],
+  });
+  const get = (path: string) => worker.fetch(new Request(`https://bot.example${path}`), env, ctx);
+  const head = (path: string) => worker.fetch(new Request(`https://bot.example${path}`, { method: "HEAD" }), env, ctx);
+  beforeEach(() => {
+    env = makeEnv();
+    rendered.length = 0;
+  });
+
+  it("answers the page like the GET, with no body", async () => {
+    mockFetch(search);
+    const res = await head("/leaderboard/2026-10/u/ada");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Security-Policy")).toContain("img-src 'self'");
+    expect(await res.text()).toBe("");
+  });
+
+  it("answers the card like the GET, with the image headers and no body", async () => {
+    mockFetch(search);
+    const res = await head("/leaderboard/2026-10/u/Ada.png");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/png");
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=600");
+    expect(await res.text()).toBe("");
+  });
+
+  it("still 404s a HEAD for a person without a card", async () => {
+    mockFetch(search);
+    const res = await head("/leaderboard/2026-10/u/bob.png");
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("");
+  });
+});
+
+describe("the card cache", () => {
+  let env = makeEnv();
+  const search = () => ({
+    total_count: 1,
+    items: [{ html_url: "https://github.com/codercops/toolbelt/pull/1", user: { login: "Ada" }, pull_request: { merged_at: "2026-10-02T00:00:00Z" } }],
+  });
+  let cache: FakeCache;
+  beforeEach(() => {
+    env = makeEnv();
+    rendered.length = 0;
+    cache = new FakeCache();
+    (globalThis as { caches?: unknown }).caches = cache.storage;
+  });
+  afterEach(() => {
+    delete (globalThis as { caches?: unknown }).caches;
+  });
+  const get = (path: string) => worker.fetch(new Request(`https://bot.example${path}`), env, makeCtx().ctx);
+  const head = (path: string) => worker.fetch(new Request(`https://bot.example${path}`, { method: "HEAD" }), env, makeCtx().ctx);
+
+  it("finds the card a GET stored, so a HEAD doesn't draw it again", async () => {
+    mockFetch(search);
+    const { ctx, settle } = makeCtx();
+    const get1 = await worker.fetch(new Request("https://bot.example/leaderboard/2026-10/u/Ada.png"), env, ctx);
+    expect(get1.status).toBe(200);
+    await settle();
+    expect(rendered).toHaveLength(1);
+
+    const res = await worker.fetch(new Request("https://bot.example/leaderboard/2026-10/u/Ada.png", { method: "HEAD" }), env, ctx);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/png");
+    expect(await res.text()).toBe("");
+    // The card was already drawn, so the HEAD did not draw it a second time.
+    expect(rendered).toHaveLength(1);
+  });
+
+  it("never stores an empty body under the card's address", async () => {
+    mockFetch(search);
+    const { ctx, settle } = makeCtx();
+    await worker.fetch(new Request("https://bot.example/leaderboard/2026-10/u/Ada.png", { method: "HEAD" }), env, ctx);
+    await settle();
+    const stored = cache.entries.get("https://bot.example/leaderboard/2026-10/u/Ada.png");
+    expect(stored).toBeDefined();
+    expect(stored!.body.byteLength).toBeGreaterThan(0);
+
+    // A GET after the HEAD still gets the whole picture.
+    const res = await worker.fetch(new Request("https://bot.example/leaderboard/2026-10/u/Ada.png"), env, ctx);
+    expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([0x89, 0x50, 0x4e, 0x47]);
   });
 });
