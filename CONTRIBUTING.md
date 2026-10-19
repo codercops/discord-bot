@@ -56,7 +56,7 @@ npm run typecheck && npm test
 - Keep logic out of the request handlers. Message text lives in `src/messages.ts` and has no I/O, which is why it's easy to test. New behavior needs a test in `test/`.
 - The bot doesn't ping people and never posts anything that isn't public on GitHub already. The one exception is the welcome post, which notifies the new member it's for. Please keep it that way.
 - Never commit tokens or secrets. Local secrets go in `.dev.vars`, which is gitignored.
-- Use conventional commit titles (`feat:`, `fix:`, `docs:`, `chore:`), branch off `develop`, and open the pull request against `develop` with `Closes #<issue number>`.
+- Use conventional commit titles (`feat:`, `fix:`, `docs:`, `chore:`), branch off `develop`, and open the pull request against `develop` here in codercops/discord-bot with `Closes #<issue number>`. A PR merged inside your own fork never reaches us, so it doesn't count.
 
 CI runs the typecheck and the tests on every pull request. A second check ("Claim check") fails if the linked issue isn't assigned to you. A third ("Description check") fails while the "How I tested this" or "AI assistance" section of the PR description is missing or empty.
 
