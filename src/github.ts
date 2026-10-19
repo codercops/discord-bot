@@ -51,6 +51,21 @@ export interface StarterIssue {
   labels: string[];
 }
 
+export interface GithubIssue {
+  number: number;
+  title: string;
+  html_url: string;
+  state: "open" | "closed";
+  state_reason?: string | null;
+  labels: { name: string }[];
+  assignees: { login: string }[];
+  pull_request?: unknown;
+}
+
+export async function getIssue(env: Env, cfg: Config, repo: string, number: number): Promise<GithubIssue> {
+  return gh<GithubIssue>(env, `/repos/${cfg.org}/${repo}/issues/${number}`);
+}
+
 interface ApiIssue {
   number: number;
   title: string;

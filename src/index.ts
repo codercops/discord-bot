@@ -12,7 +12,7 @@ import { cardSvg } from "./card";
 import { contributorPage, leaderboardJson, leaderboardPage, noticePage, standing } from "./page";
 import { currentProgram, findProgram, LEADERBOARD_PATH, leaderboardUrl, programStatus } from "./programs";
 import { verifyDiscordRequest, verifyGithubSignature } from "./verify";
-import { handleGithubEvent } from "./webhook";
+import { handleGithubEvent, resyncStarterIssues } from "./webhook";
 import { welcomeNewMembers } from "./welcome";
 import { version } from "../package.json";
 
@@ -292,7 +292,10 @@ export default {
     const cfg = getConfig(env);
     const now = new Date(controller.scheduledTime);
     if (controller.cron === DAILY_CRON) await dailyPosts(env, cfg, now);
-    if (controller.cron === WELCOME_CRON) await welcomeNewMembers(env, cfg, now);
+    if (controller.cron === WELCOME_CRON) {
+      await resyncStarterIssues(env, cfg);
+      await welcomeNewMembers(env, cfg, now);
+    }
   },
 } satisfies ExportedHandler<Env>;
 

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getConfig } from "../src/config";
-import { handleGithubEvent, isStarterIssue, starterState } from "../src/webhook";
+import { handleGithubEvent, isStarterIssue, resyncStarterIssues, starterState } from "../src/webhook";
 import { makeEnv, mockFetch } from "./helpers";
 
 const repository = { name: "toolbelt", owner: { login: "codercops" } };
@@ -421,6 +421,98 @@ describe("merged pull requests", () => {
     await handleGithubEvent("pull_request", prEvent({ merged: false }), env, cfg);
     await handleGithubEvent("pull_request", { ...prEvent(), action: "opened" }, env, cfg);
     expect(fetched.discord()).toHaveLength(0);
+  });
+});
+
+describe("rate limited starter issue feed", () => {
+  const rateLimit = () => new Response(JSON.stringify({ retry_after: 30 }), { status: 429 });
+  const onGithub = (over: Record<string, unknown> = {}) => () => ({ ...issueEvent("edited").issue, ...over });
+
+  it("marks the issue instead of failing when Discord answers 429, and the cron posts it", async () => {
+    mockFetch(undefined, rateLimit);
+    expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe(
+      "starter issue rate limited, resync queued"
+    );
+    expect(await env.STATE.get("resync:toolbelt#124")).toBe("1");
+    expect(await env.STATE.get("issue:toolbelt#124")).toBeNull();
+
+    const fetched = mockFetch(onGithub());
+    await resyncStarterIssues(env, cfg);
+    expect(fetched.calls[0]?.url).toBe("https://api.github.com/repos/codercops/toolbelt/issues/124");
+    expect(fetched.discord()).toHaveLength(1);
+    expect(fetched.discord()[0]?.method).toBe("POST");
+    expect(await env.STATE.get("resync:toolbelt#124")).toBeNull();
+    expect(await env.STATE.get("issue:toolbelt#124", "json")).toMatchObject({ messageId: "msg-1", state: "open" });
+  });
+
+  it("edits the message to the issue's state on GitHub, not the state of the lost event", async () => {
+    mockFetch();
+    await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg);
+    mockFetch(undefined, rateLimit);
+    expect(await handleGithubEvent("issues", issueEvent("assigned", { assignees: [{ login: "ada" }] }), env, cfg)).toBe(
+      "starter issue rate limited, resync queued"
+    );
+
+    // By the next run the issue was closed on GitHub.
+    const fetched = mockFetch(onGithub({ state: "closed", state_reason: "completed", assignees: [{ login: "ada" }] }));
+    await resyncStarterIssues(env, cfg);
+    expect(fetched.discord()).toHaveLength(1);
+    expect(fetched.discord()[0]?.method).toBe("PATCH");
+    expect(fetched.discord()[0]?.url).toContain("/messages/msg-1");
+    expect(await env.STATE.get("issue:toolbelt#124", "json")).toMatchObject({ messageId: "msg-1", state: "done" });
+    expect(await env.STATE.get("resync:toolbelt#124")).toBeNull();
+  });
+
+  it("doesn't undo a newer update that already went through", async () => {
+    mockFetch();
+    await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg);
+    mockFetch(undefined, rateLimit);
+    await handleGithubEvent("issues", issueEvent("assigned", { assignees: [{ login: "ada" }] }), env, cfg);
+    mockFetch();
+    expect(await handleGithubEvent("issues", issueEvent("unassigned"), env, cfg)).toBe("unchanged starter issue");
+    const claimed = mockFetch();
+    await handleGithubEvent("issues", issueEvent("assigned", { assignees: [{ login: "bob" }] }), env, cfg);
+    expect(claimed.discord()).toHaveLength(1);
+
+    const fetched = mockFetch(onGithub({ assignees: [{ login: "bob" }] }));
+    await resyncStarterIssues(env, cfg);
+    expect(fetched.discord()).toHaveLength(0);
+    expect(await env.STATE.get("issue:toolbelt#124", "json")).toMatchObject({ state: "claimed" });
+    expect(await env.STATE.get("resync:toolbelt#124")).toBeNull();
+  });
+
+  it("keeps the mark when the resync is rate limited too", async () => {
+    await env.STATE.put("resync:toolbelt#124", "1");
+    await env.STATE.put("resync:toolbelt#125", "1");
+    const fetched = mockFetch(onGithub(), rateLimit);
+    await resyncStarterIssues(env, cfg);
+    // The channel is still limited, so the second issue isn't tried this run.
+    expect(fetched.discord()).toHaveLength(1);
+    expect(await env.STATE.get("resync:toolbelt#124")).toBe("1");
+    expect(await env.STATE.get("resync:toolbelt#125")).toBe("1");
+  });
+
+  it("does a few per run, and costs one list when nothing is marked", async () => {
+    for (let n = 1; n <= 7; n++) await env.STATE.put(`resync:toolbelt#${n}`, "1");
+    const fetched = mockFetch((url) => ({ ...issueEvent("edited").issue, number: Number(url.pathname.split("/").pop()) }));
+    await resyncStarterIssues(env, cfg);
+    expect(fetched.discord()).toHaveLength(5);
+    expect((await env.STATE.list({ prefix: "resync:" })).keys).toHaveLength(2);
+
+    await resyncStarterIssues(env, cfg);
+    fetched.clear();
+    const get = vi.spyOn(env.STATE, "get");
+    const list = vi.spyOn(env.STATE, "list");
+    await resyncStarterIssues(env, cfg);
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(get).not.toHaveBeenCalled();
+    expect(fetched.calls).toHaveLength(0);
+  });
+
+  it("lets other Discord errors fail the webhook as before", async () => {
+    mockFetch(undefined, () => new Response("{}", { status: 500 }));
+    await expect(handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).rejects.toThrow("Discord 500");
+    expect(await env.STATE.get("resync:toolbelt#124")).toBeNull();
   });
 });
 

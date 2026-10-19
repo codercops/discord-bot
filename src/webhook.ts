@@ -1,7 +1,7 @@
 // Handles GitHub webhook events: releases, starter issues and merged PRs.
 import type { Config, Env } from "./config";
-import { editMessage, sendMessage } from "./discord";
-import { countMergedPrs, searchMergedPrs, type StarterIssue } from "./github";
+import { DiscordError, editMessage, sendMessage } from "./discord";
+import { countMergedPrs, getIssue, searchMergedPrs, type GithubIssue, type StarterIssue } from "./github";
 import { cacheLeaderboard, invalidateLeaderboard } from "./leaderboard";
 import { getLinkByGithub } from "./links";
 import { grantEarnedRoles } from "./roles";
@@ -23,16 +23,7 @@ interface IssuesEvent {
   repository: Repository;
   /** The label that was added or removed, on labeled/unlabeled events. */
   label?: { name: string };
-  issue: {
-    number: number;
-    title: string;
-    html_url: string;
-    state: "open" | "closed";
-    state_reason?: string | null;
-    labels: { name: string }[];
-    assignees: { login: string }[];
-    pull_request?: unknown;
-  };
+  issue: GithubIssue;
 }
 
 interface PullRequestEvent {
@@ -108,6 +99,24 @@ function starterIssueSnapshot(message: ReturnType<typeof starterIssueMessage>): 
   });
 }
 
+const feedKey = (repo: string, number: number) => `issue:${repo}#${number}`;
+const resyncKey = (repo: string, number: number) => `resync:${repo}#${number}`;
+/** A channel takes about five messages per five seconds; the rest wait for the next run. */
+const RESYNC_PER_RUN = 5;
+
+/** Posts the issue's message, or edits the one already posted when it changed. */
+async function writeFeed(env: Env, record: FeedRecord | null, issue: StarterIssue, state: StarterState): Promise<string> {
+  const message = starterIssueMessage(issue, state);
+  const snapshot = starterIssueSnapshot(message);
+  if (record?.message === snapshot) return "unchanged starter issue";
+  const messageId = record?.messageId ?? (await sendMessage(env, env.CHANNEL_STARTER_ISSUES, message));
+  if (record) await editMessage(env, env.CHANNEL_STARTER_ISSUES, record.messageId, message);
+  await env.STATE.put(feedKey(issue.repo, issue.number), JSON.stringify({ messageId, state: state.kind, message: snapshot } satisfies FeedRecord));
+  return record ? `updated starter issue (${state.kind})` : "posted starter issue";
+}
+
+const rateLimited = (err: unknown) => err instanceof DiscordError && err.status === 429;
+
 // Keeps one message per issue in #starter-issues and edits it as the issue is
 // claimed, released or closed, so the feed always shows what's really free.
 async function onIssue(e: IssuesEvent, env: Env, cfg: Config): Promise<string> {
@@ -120,8 +129,7 @@ async function onIssue(e: IssuesEvent, env: Env, cfg: Config): Promise<string> {
     url: e.issue.html_url,
     labels,
   };
-  const key = `issue:${issue.repo}#${issue.number}`;
-  const record = await env.STATE.get<FeedRecord>(key, "json");
+  const record = await env.STATE.get<FeedRecord>(feedKey(issue.repo, issue.number), "json");
   const state = starterState(e.issue, cfg, e.action);
 
   if (!record) {
@@ -138,20 +146,44 @@ async function onIssue(e: IssuesEvent, env: Env, cfg: Config): Promise<string> {
     if (!starterLabelAdded && !freedUp) return "ignored issue";
     // Only announce issues that are free to take right now.
     if (state.kind !== "open" || !isStarterIssue(labels, cfg)) return "ignored issue";
-    const message = starterIssueMessage(issue, state);
-    const snapshot = starterIssueSnapshot(message);
-    const messageId = await sendMessage(env, env.CHANNEL_STARTER_ISSUES, message);
-    await env.STATE.put(key, JSON.stringify({ messageId, state: state.kind, message: snapshot } satisfies FeedRecord));
-    return "posted starter issue";
   }
 
-  const message = starterIssueMessage(issue, state);
-  const snapshot = starterIssueSnapshot(message);
-  if (record.message === snapshot) return "unchanged starter issue";
+  try {
+    return await writeFeed(env, record, issue, state);
+  } catch (err) {
+    // GitHub doesn't send a failed delivery again, so leave the update to the
+    // cron, which reads the issue from GitHub (see resyncStarterIssues).
+    if (!rateLimited(err)) throw err;
+    await env.STATE.put(resyncKey(issue.repo, issue.number), "1");
+    return "starter issue rate limited, resync queued";
+  }
+}
 
-  await editMessage(env, env.CHANNEL_STARTER_ISSUES, record.messageId, message);
-  await env.STATE.put(key, JSON.stringify({ messageId: record.messageId, state: state.kind, message: snapshot } satisfies FeedRecord));
-  return `updated starter issue (${state.kind})`;
+/** Brings the feed messages that Discord rate limited in line with their issues on GitHub. */
+export async function resyncStarterIssues(env: Env, cfg: Config): Promise<void> {
+  const { keys } = await env.STATE.list({ prefix: "resync:", limit: RESYNC_PER_RUN });
+  for (const { name } of keys) {
+    const [, repo, number] = /^resync:(.+)#(\d+)$/.exec(name) ?? [];
+    // Removed before reading GitHub, so a mark the webhook writes meanwhile stays.
+    await env.STATE.delete(name);
+    if (!repo || !number) continue;
+    try {
+      const current = await getIssue(env, cfg, repo, Number(number));
+      const issue: StarterIssue = { repo, number: current.number, title: current.title, url: current.html_url, labels: current.labels.map((l) => l.name) };
+      const record = await env.STATE.get<FeedRecord>(feedKey(repo, current.number), "json");
+      const state = starterState(current, cfg);
+      // Like onIssue, only post issues that are free to take right now.
+      if (!record && state.kind !== "open") continue;
+      await writeFeed(env, record, issue, state);
+    } catch (err) {
+      if (rateLimited(err)) {
+        // The channel is still limited, so the rest wait as well.
+        await env.STATE.put(name, "1");
+        return;
+      }
+      console.error("starter issue resync failed", name, err);
+    }
+  }
 }
 
 async function onPullRequest(e: PullRequestEvent, env: Env, cfg: Config): Promise<string> {

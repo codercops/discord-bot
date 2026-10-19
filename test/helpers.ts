@@ -14,8 +14,11 @@ export class FakeKV {
   async delete(key: string): Promise<void> {
     this.store.delete(key);
   }
-  async list(opts: { prefix?: string } = {}) {
-    const keys = [...this.store.keys()].filter((k) => k.startsWith(opts.prefix ?? "")).map((name) => ({ name }));
+  async list(opts: { prefix?: string; limit?: number } = {}) {
+    const keys = [...this.store.keys()]
+      .filter((k) => k.startsWith(opts.prefix ?? ""))
+      .slice(0, opts.limit)
+      .map((name) => ({ name }));
     return { keys, list_complete: true, cursor: "" };
   }
 }
