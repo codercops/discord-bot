@@ -3,18 +3,12 @@ import { describe, expect, it } from "vitest";
 import raw from "../wrangler.jsonc?raw";
 import { DAILY_CRON, getConfig, WELCOME_CRON, type Env } from "../src/config";
 import { LEADERBOARD_PATH } from "../src/programs";
+import { parseJsonc } from "../scripts/jsonc";
 
 describe("wrangler.jsonc configuration", () => {
-  // Strip whole-line comments identically to scripts/register-commands.mjs
-  const cleanJson = raw.replace(/^\s*\/\/.*$/gm, "");
-  const config = JSON.parse(cleanJson);
+  // Parsed the same way as in scripts/register-commands.mjs
+  const config = parseJsonc(raw);
   const cfg = getConfig(config.vars as unknown as Env);
-
-  it("parses without trailing inline comments", () => {
-    // Comments at the end of a line break scripts/register-commands.mjs because
-    // it only strips comments sitting on their own line.
-    expect(() => JSON.parse(cleanJson)).not.toThrow();
-  });
 
   it("has triggers.crons matching DAILY_CRON and WELCOME_CRON and nothing else", () => {
     expect(config.triggers?.crons).toEqual([DAILY_CRON, WELCOME_CRON]);
