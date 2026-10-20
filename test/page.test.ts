@@ -14,6 +14,7 @@ const links = {
   issues: "https://github.com/search?q=x&type=issues",
   discord: "https://discord.gg/example",
   self: "https://bot.example/leaderboard/2026-10",
+  image: "https://bot.example/leaderboard/2026-10.png?v=abc",
   others: [] as { title: string; path: string }[],
 };
 
@@ -130,6 +131,22 @@ describe("leaderboardPage", () => {
 
   it("links to the favicon in the head", () => {
     expect(html).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg">');
+  });
+
+  it("has the same share preview tags as a contributor page, pointing at its own image", () => {
+    expect(html).toContain('<meta property="og:image" content="https://bot.example/leaderboard/2026-10.png?v=abc">');
+    expect(html).toContain('<meta property="og:image:width" content="1200">');
+    expect(html).toContain('<meta property="og:image:height" content="630">');
+    expect(html).toContain('<meta name="twitter:card" content="summary_large_image">');
+    expect(html).toContain('<meta name="twitter:image" content="https://bot.example/leaderboard/2026-10.png?v=abc">');
+    expect(html).not.toContain("og.codercops.com");
+    expect(html).toContain(
+      '<meta property="og:image:alt" content="Share image: Hacktoberfest 2026 leaderboard. 1. ada, 6 merged PRs; 2. bob, 5 merged PRs; 3. cy, 2 merged PRs; 4. dee, 4 merged PRs.">'
+    );
+    const empty = leaderboardPage({ ...board, rows: [] }, program, links, during);
+    expect(empty).toContain('content="Share image: Hacktoberfest 2026 leaderboard. No merged pull requests counted yet.">');
+    const evil = leaderboardPage({ ...board, rows: [row('"><script>', 1)] }, program, links, during);
+    expect(evil).toContain("1. &quot;&gt;&lt;script&gt;, 1 merged PR.");
   });
 });
 

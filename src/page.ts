@@ -2,6 +2,7 @@
 // JSON from the same ranking the Discord posts use.
 import type { Program } from "./config";
 import type { Leaderboard, LeaderboardRow } from "./leaderboard";
+import { BOARD_ROWS } from "./card";
 import { programStatus, type ProgramStatus } from "./programs";
 
 export function escapeHtml(text: string): string {
@@ -130,6 +131,8 @@ export interface PageLinks {
   discord: string;
   /** The page's own permanent URL, for share previews. */
   self: string;
+  /** The board's share image, as an absolute URL. It carries a version so previews refresh when the top five change. */
+  image: string;
   /** The other programs, each with the path of its page. */
   others: { title: string; path: string }[];
 }
@@ -148,11 +151,13 @@ export function leaderboardPage(
   const when = dateRange(start, end);
   const state = statusLine(program, now);
   const description = `Merged pull requests in ${repos}, ${when}. The top ${topN} with at least ${minPrs} get ${reward}.`;
-  const ogImage = `https://og.codercops.com/api/og?${new URLSearchParams({
-    template: "github-readme-hero",
-    title: heading,
-    description: `Top contributors to ${repos}`,
-  })}`;
+  const top = board.rows
+    .slice(0, BOARD_ROWS)
+    .map((row, i) => `${i + 1}. ${row.login}, ${row.count} merged ${row.count === 1 ? "PR" : "PRs"}`)
+    .join("; ");
+  const imageAlt = board.rows.length
+    ? `Share image: ${heading}. ${top}.`
+    : `Share image: ${heading}. No merged pull requests counted yet.`;
 
   const rows = board.rows
     .map((row, i) => {
@@ -173,11 +178,15 @@ export function leaderboardPage(
 <meta name="description" content="${escapeHtml(description)}">
 <meta property="og:title" content="${escapeHtml(heading)}">
 <meta property="og:description" content="${escapeHtml(description)}">
-<meta property="og:image" content="${escapeHtml(ogImage)}">
+<meta property="og:image" content="${escapeHtml(links.image)}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${escapeHtml(imageAlt)}">
 <meta property="og:url" content="${escapeHtml(links.self)}">
 <link rel="canonical" href="${escapeHtml(links.self)}">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${escapeHtml(links.image)}">
 <style>${STYLE}</style>
 </head>
 <body>

@@ -30,3 +30,6 @@ export const leaderboardUrl = (cfg: Config, program: Program): string => `${cfg.
 
 // /leaderboard, /leaderboard.json, /leaderboard/{id} and /leaderboard/{id}.json
 export const LEADERBOARD_PATH = /^\/leaderboard(?:\/([a-z0-9][a-z0-9-]*))?(\.json)?$/;
+
+// /leaderboard/{id}.png, the board's share image
+export const LEADERBOARD_IMAGE_PATH = /^\/leaderboard\/([a-z0-9][a-z0-9-]*)\.png$/;

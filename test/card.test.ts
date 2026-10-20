@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { cardSvg, escapeXml, fitMono, progressBar } from "../src/card";
+import { boardSvg, boardVersion, cardSvg, escapeXml, fitMono, progressBar } from "../src/card";
 import { getConfig } from "../src/config";
 import worker from "../src/index";
 import { contributorPage } from "../src/page";
@@ -92,6 +92,117 @@ describe("cardSvg", () => {
     expect(svg).toContain("a&amp;b");
     expect(svg).toContain("&lt;host&gt;");
     expect(svg).toContain("&lt;B&gt;");
+  });
+});
+
+describe("boardSvg", () => {
+  const after = new Date("2026-11-03T00:00:00Z");
+  const six = [
+    row("ada", 7, true, true),
+    row("bob", 6, true, true),
+    row("cy", 5, true, true),
+    row("dee", 3),
+    row("eve", 2),
+    row("fay", 1),
+  ];
+  const pic = "data:image/png;base64,AAAA";
+  const base = { program, rows: six, avatars: [pic, pic, undefined, pic, pic], now: during, site: "oss.example" };
+
+  it("shows the program, where it stands, the top five and the totals", () => {
+    const svg = boardSvg(base);
+    expect(svg).toContain('viewBox="0 0 1200 630"');
+    expect(svg).toContain(">Hacktoberfest 2026 leaderboard</text>");
+    expect(svg).toContain(">20 DAYS LEFT</text>");
+    expect(svg).toContain(">6 contributors  ·  24 merged PRs</text>");
+    for (const [i, login] of ["ada", "bob", "cy", "dee", "eve"].entries()) {
+      expect(svg).toContain(`>#${i + 1}</text>`);
+      expect(svg).toContain(`>${login}</text>`);
+    }
+    expect(svg.indexOf(">ada</text>")).toBeLessThan(svg.indexOf(">eve</text>"));
+    expect(svg).toContain(">7 PRs</text>");
+    // The sixth person counts in the totals but isn't drawn.
+    expect(svg).not.toContain(">#6</text>");
+    expect(svg).not.toContain(">fay</text>");
+    expect(svg).toContain(">oss.example</text>");
+  });
+
+  it("falls back to the first letter for a missing avatar", () => {
+    const svg = boardSvg(base);
+    expect(svg.match(/<image /g)).toHaveLength(4);
+    expect(svg).toContain(">C</text>");
+  });
+
+  it("marks the people in the top N, and calls them winners once it's over", () => {
+    const running = boardSvg(base);
+    expect(running.match(/>TOP 5<\/text>/g)).toHaveLength(3);
+    const ended = boardSvg({ ...base, now: after });
+    expect(ended).toContain(">FINAL RESULTS</text>");
+    expect(ended.match(/>WINNER<\/text>/g)).toHaveLength(3);
+    expect(ended).not.toContain("TOP 5");
+    expect(ended).not.toContain("DAYS LEFT");
+  });
+
+  it("draws fewer rows when fewer people are on the board, with singular wording", () => {
+    const two = boardSvg({ ...base, rows: six.slice(0, 2), avatars: [pic, pic] });
+    expect(two).toContain(">#2</text>");
+    expect(two).not.toContain(">#3</text>");
+    expect(two).toContain(">2 contributors  ·  13 merged PRs</text>");
+    const one = boardSvg({ ...base, rows: [row("ada", 1)], avatars: [undefined] });
+    expect(one).toContain(">1 contributor  ·  1 merged PR</text>");
+    expect(one).toContain(">1 PR</text>");
+    expect(one).toContain(">A</text>");
+  });
+
+  it("has an empty state", () => {
+    const empty = boardSvg({ ...base, rows: [], avatars: [] });
+    expect(empty).toContain(">0 contributors  ·  0 merged PRs</text>");
+    expect(empty).toContain(">No merged pull requests yet</text>");
+    expect(empty).toContain(">Pick an issue and be the first.</text>");
+    expect(empty).not.toContain(">#1</text>");
+    const ended = boardSvg({ ...base, rows: [], avatars: [], now: after });
+    expect(ended).toContain(">No merged pull requests were counted</text>");
+    expect(ended).not.toContain("Pick an issue");
+    expect(boardSvg({ ...base, rows: [], avatars: [], now: new Date("2026-09-01T00:00:00Z") })).toContain(">STARTS OCT 1</text>");
+  });
+
+  it("fits a 39 character login before the top N mark", () => {
+    const long = "a".repeat(39);
+    const svg = boardSvg({ ...base, rows: [row(long, 9, true, true)], avatars: [pic] });
+    const size = fitMono(long, 600, 30);
+    expect(svg).toContain(`font-size="${size}" fill="#e6e9ef">${long}</text>`);
+    const markLeft = Number(/<rect x="(\d+)" y="\d+" width="\d+" height="30"/.exec(svg)![1]);
+    expect(212 + 0.6 * size * long.length).toBeLessThan(markLeft);
+  });
+
+  it("escapes everything that isn't ours", () => {
+    const evil = { ...program, title: `<script>"x"</script>`, repos: ["a&b"] };
+    const svg = boardSvg({ ...base, program: evil, site: "<host>", rows: [row("<b>&", 1)], avatars: [`x"/><script>`] });
+    expect(svg).not.toContain("<script>");
+    expect(svg).not.toContain("<b>");
+    expect(svg).toContain("&lt;script&gt;&quot;x&quot;&lt;/script&gt; leaderboard");
+    expect(svg).toContain(">&lt;b&gt;&amp;</text>");
+    expect(svg).toContain('href="x&quot;/&gt;&lt;script&gt;"');
+    expect(boardSvg({ ...base, rows: [row("<b>", 1)], avatars: [undefined] })).toContain(">&lt;</text>");
+    expect(svg).toContain("a&amp;b");
+    expect(svg).toContain("&lt;host&gt;");
+  });
+});
+
+describe("boardVersion", () => {
+  const rows = [row("ada", 7, true, true), row("bob", 6, true, true), row("cy", 2)];
+
+  it("stays the same while nothing on the image changes", () => {
+    expect(boardVersion(rows, program, during)).toBe(boardVersion([...rows], program, new Date(during.getTime() + 60_000)));
+    expect(boardVersion(rows, program, during)).toMatch(/^[a-z0-9]+$/);
+  });
+
+  it("changes when the top five, their counts, the totals or the program's state change", () => {
+    const v = boardVersion(rows, program, during);
+    expect(boardVersion([row("ada", 8, true, true), rows[1]!, rows[2]!], program, during)).not.toBe(v);
+    expect(boardVersion([rows[1]!, rows[0]!, rows[2]!], program, during)).not.toBe(v);
+    expect(boardVersion([...rows, row("dee", 1)], program, during)).not.toBe(v);
+    expect(boardVersion(rows, program, new Date("2026-11-03T00:00:00Z"))).not.toBe(v);
+    expect(boardVersion([], program, during)).not.toBe(v);
   });
 });
 
@@ -322,5 +433,135 @@ describe("the card cache", () => {
     // A GET after the HEAD still gets the whole picture.
     const res = await worker.fetch(new Request("https://bot.example/leaderboard/2026-10/u/Ada.png"), env, ctx);
     expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  });
+});
+
+describe("GET /leaderboard/{id}.png", () => {
+  let env = makeEnv();
+  const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
+  const pr = (n: number, login: string) => ({
+    html_url: `https://github.com/codercops/toolbelt/pull/${n}`,
+    user: { login },
+    pull_request: { merged_at: `2026-10-0${(n % 9) + 1}T00:00:00Z` },
+  });
+  const search = () => ({ total_count: 3, items: [pr(1, "Ada"), pr(2, "Ada"), pr(3, "noavatar")] });
+  beforeEach(() => {
+    env = makeEnv();
+    rendered.length = 0;
+  });
+  const get = (path: string) => worker.fetch(new Request(`https://bot.example${path}`), env, ctx);
+  const head = (path: string) => worker.fetch(new Request(`https://bot.example${path}`, { method: "HEAD" }), env, ctx);
+
+  it("serves the board as a PNG, cached like the contributor card", async () => {
+    mockFetch(search);
+    const res = await get("/leaderboard/2026-10.png?v=1");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/png");
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=600");
+    expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+    expect(rendered).toHaveLength(1);
+    expect(rendered[0]).toContain('viewBox="0 0 1200 630"');
+    expect(rendered[0]).toContain(">Hacktoberfest 2026 leaderboard</text>");
+    expect(rendered[0]).toContain(">Ada</text>");
+    expect(rendered[0]).toContain(">2 contributors  ·  3 merged PRs</text>");
+    expect(rendered[0]).toContain(">bot.example</text>");
+    // Ada's avatar came back, noavatar's didn't.
+    expect(rendered[0]!.match(/<image /g)).toHaveLength(1);
+    expect(rendered[0]).toContain(">N</text>");
+  });
+
+  it("draws five people at most, each with their avatar", async () => {
+    const logins = ["a1", "a2", "a3", "a4", "a5", "a6", "a7"];
+    mockFetch(() => ({ total_count: 7, items: logins.map((l, i) => pr(i + 1, l)) }));
+    await get("/leaderboard/2026-10.png");
+    expect(rendered[0]!.match(/<image /g)).toHaveLength(5);
+    expect(rendered[0]).not.toContain(">a6</text>");
+  });
+
+  it("draws an empty board", async () => {
+    mockFetch();
+    const res = await get("/leaderboard/2026-10.png");
+    expect(res.status).toBe(200);
+    expect(rendered[0]).toContain(">0 contributors  ·  0 merged PRs</text>");
+    expect(rendered[0]).not.toContain(">#1</text>");
+  });
+
+  it("answers 404 for an unknown program and 503 when GitHub can't be reached", async () => {
+    mockFetch(search);
+    expect((await get("/leaderboard/2025-01.png")).status).toBe(404);
+    expect((await get("/leaderboard/Bad.png")).status).toBe(404);
+    expect(rendered).toHaveLength(0);
+    globalThis.fetch = (async () => new Response("{}", { status: 403 })) as typeof fetch;
+    const res = await get("/leaderboard/2026-10.png");
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("60");
+  });
+
+  it("answers a HEAD like the GET, with no body", async () => {
+    mockFetch(search);
+    const res = await head("/leaderboard/2026-10.png");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/png");
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=600");
+    expect(await res.text()).toBe("");
+    expect((await head("/leaderboard/2025-01.png")).status).toBe(404);
+  });
+
+  it("is the page's share image, with a version that follows the top five", async () => {
+    mockFetch(search);
+    const html = await (await get("/leaderboard/2026-10")).text();
+    const image = /<meta property="og:image" content="([^"]+)">/.exec(html)![1]!;
+    expect(image).toMatch(/^https:\/\/bot\.example\/leaderboard\/2026-10\.png\?v=[a-z0-9]+$/);
+    expect(html).toContain(`<meta name="twitter:image" content="${image}">`);
+    // The current program's page points at the same permanent address.
+    expect(await (await get("/leaderboard")).text()).toContain(`content="${image}"`);
+
+    env = makeEnv();
+    mockFetch(() => ({ total_count: 4, items: [pr(1, "Ada"), pr(2, "Ada"), pr(3, "noavatar"), pr(4, "noavatar")] }));
+    const changed = await (await get("/leaderboard/2026-10")).text();
+    expect(/<meta property="og:image" content="([^"]+)">/.exec(changed)![1]).not.toBe(image);
+  });
+});
+
+describe("the board image cache", () => {
+  let env = makeEnv();
+  const search = () => ({
+    total_count: 1,
+    items: [{ html_url: "https://github.com/codercops/toolbelt/pull/1", user: { login: "Ada" }, pull_request: { merged_at: "2026-10-02T00:00:00Z" } }],
+  });
+  let cache: FakeCache;
+  beforeEach(() => {
+    env = makeEnv();
+    rendered.length = 0;
+    cache = new FakeCache();
+    (globalThis as { caches?: unknown }).caches = cache.storage;
+  });
+  afterEach(() => {
+    delete (globalThis as { caches?: unknown }).caches;
+  });
+
+  it("draws the image once and serves the stored copy to the next GET and HEAD", async () => {
+    mockFetch(search);
+    const { ctx, settle } = makeCtx();
+    const url = "https://bot.example/leaderboard/2026-10.png?v=x";
+    expect((await worker.fetch(new Request(url), env, ctx)).status).toBe(200);
+    await settle();
+    expect(rendered).toHaveLength(1);
+    const again = await worker.fetch(new Request(url), env, ctx);
+    expect([...new Uint8Array(await again.arrayBuffer())]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+    const res = await worker.fetch(new Request(url, { method: "HEAD" }), env, ctx);
+    expect(res.headers.get("Content-Type")).toBe("image/png");
+    expect(await res.text()).toBe("");
+    expect(rendered).toHaveLength(1);
+  });
+
+  it("never stores an empty body when a HEAD comes first", async () => {
+    mockFetch(search);
+    const { ctx, settle } = makeCtx();
+    await worker.fetch(new Request("https://bot.example/leaderboard/2026-10.png", { method: "HEAD" }), env, ctx);
+    await settle();
+    const stored = cache.entries.get("https://bot.example/leaderboard/2026-10.png");
+    expect(stored).toBeDefined();
+    expect(stored!.body.byteLength).toBeGreaterThan(0);
   });
 });
