@@ -471,6 +471,53 @@ describe("merged pull requests", () => {
     expect(fetched.discord()[0]?.body.embeds[0].description).not.toContain("That's their");
   });
 
+  describe("when linking is on", () => {
+    const newHere = "New here? Run `/link` in this server to connect your GitHub account and get the Contributor role.";
+    const winnersDm = "Winners are contacted by Discord DM, so run `/link` in this server to tell us which Discord account is yours.";
+    const earlier = (n: number) => () => ({
+      total_count: n,
+      items: Array.from({ length: n }, (_, i) => ({
+        html_url: `https://github.com/codercops/toolbelt/pull/${i + 1}`,
+        user: { login: "ada" },
+        number: i + 1,
+        title: "Fix a thing",
+        repository_url: "https://api.github.com/repos/codercops/toolbelt",
+        pull_request: { merged_at: `2026-10-0${i + 1}T00:00:00Z` },
+      })),
+    });
+    const shoutout = async (others: number, event = prEvent()) => {
+      env = makeEnv({ LINKING: "on", DISCORD_CLIENT_SECRET: "client-secret" });
+      cfg = getConfig(env);
+      const fetched = mockFetch(earlier(others));
+      await handleGithubEvent("pull_request", event, env, cfg);
+      return (fetched.discord()[0]?.body.embeds[0].description as string).split("\n");
+    };
+
+    it("asks an unlinked author to run /link on their first counted PR", async () => {
+      expect((await shoutout(0)).at(-1)).toBe(newHere);
+    });
+
+    it("asks again, after the qualify line, on the merge that reaches the minimum", async () => {
+      const lines = await shoutout(4);
+      expect(lines.at(-2)).toContain("With 5 they now qualify");
+      expect(lines.at(-1)).toBe(winnersDm);
+    });
+
+    it("says nothing about /link for other counts or PRs that don't count", async () => {
+      for (const lines of [await shoutout(1), await shoutout(5), await shoutout(0, prEvent({ labels: [] }))]) {
+        expect(lines.some((l) => l.includes("/link"))).toBe(false);
+      }
+    });
+  });
+
+  it("says nothing about /link when linking is off", async () => {
+    const fetched = mockFetch();
+    await handleGithubEvent("pull_request", prEvent(), env, cfg);
+    const description = fetched.discord()[0]?.body.embeds[0].description as string;
+    expect(description).toContain("That's their 1st merged PR");
+    expect(description).not.toContain("/link");
+  });
+
   it("skips bots, maintainers, unmerged PRs and other actions", async () => {
     const fetched = mockFetch();
     await handleGithubEvent("pull_request", prEvent({}, { login: "dependabot[bot]", type: "Bot" }), env, cfg);

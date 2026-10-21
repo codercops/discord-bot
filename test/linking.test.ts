@@ -466,6 +466,16 @@ describe("linked members in posts", () => {
     expect(post?.body.embeds[0].description).toContain("That earns them the **Top Contributor** role.");
   });
 
+  it("doesn't ask a linked author to run /link", async () => {
+    const env = makeEnv({ LINKING: "on", DISCORD_CLIENT_SECRET: "client-secret" });
+    await saveLink(env, ada);
+    const fetched = mockFetch(search(0), discordApi({ memberRoles: [] }));
+    await handleGithubEvent("pull_request", prEvent, env, getConfig(env));
+    const post = fetched.calls.find((c) => c.url.endsWith("/channels/chan-merged/messages"));
+    expect(post?.body.embeds[0].description).toContain("That's their 1st merged PR");
+    expect(post?.body.embeds[0].description).not.toContain("/link");
+  });
+
   it("still posts the shoutout when the role can't be given", async () => {
     const env = makeEnv();
     await saveLink(env, ada);

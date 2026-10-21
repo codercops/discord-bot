@@ -130,6 +130,47 @@ describe("mergedPrMessage", () => {
     const plain = mergedPrMessage(pr, { count: 5, label: "Hacktoberfest 2026", qualified: { ...qualified, note: undefined } }).embeds?.[0]?.description ?? "";
     expect(plain.endsWith("which goes to the top 5 when the program ends.")).toBe(true);
   });
+
+  describe("asking unlinked authors to run /link", () => {
+    const newHere = "New here? Run `/link` in this server to connect your GitHub account and get the Contributor role.";
+    const winnersDm = "Winners are contacted by Discord DM, so run `/link` in this server to tell us which Discord account is yours.";
+    const qualified = { topN: 5, reward: "a CODERCOPS T-shirt and stickers" };
+    const lines = (...args: Parameters<typeof mergedPrMessage>) => (mergedPrMessage(...args).embeds?.[0]?.description ?? "").split("\n");
+
+    it("adds the welcome line on their first counted PR", () => {
+      expect(lines({ ...pr, linking: true }, { count: 1, label: "Hacktoberfest 2026" })).toEqual([
+        expect.stringContaining("got a PR merged in **chatcops**"),
+        "That's their 1st merged PR on the Hacktoberfest 2026 leaderboard.",
+        newHere,
+      ]);
+    });
+
+    it("adds the DM line after the qualify line on the merge that reaches the minimum", () => {
+      expect(lines({ ...pr, linking: true }, { count: 5, label: "Hacktoberfest 2026", qualified })).toEqual([
+        expect.stringContaining("got a PR merged in **chatcops**"),
+        "That's their 5th merged PR on the Hacktoberfest 2026 leaderboard.",
+        "With 5 they now qualify for a CODERCOPS T-shirt and stickers, which goes to the top 5 when the program ends.",
+        winnersDm,
+      ]);
+    });
+
+    it("uses only the DM line when the first counted PR is also the one that qualifies", () => {
+      const text = lines({ ...pr, linking: true }, { count: 1, label: "Hacktoberfest 2026", qualified: { ...qualified, topN: 3 } });
+      expect(text.at(-1)).toBe(winnersDm);
+      expect(text).not.toContain(newHere);
+    });
+
+    it("adds nothing for linked authors, other counts, PRs that don't count, or with linking off", () => {
+      const noLink = (text: string[]) => expect(text.some((l) => l.includes("/link"))).toBe(false);
+      noLink(lines({ ...pr, linking: true, discordId: "42" }, { count: 1, label: "Hacktoberfest 2026" }));
+      noLink(lines({ ...pr, linking: true, discordId: "42" }, { count: 5, label: "Hacktoberfest 2026", qualified }));
+      noLink(lines({ ...pr, linking: true }, { count: 2, label: "Hacktoberfest 2026" }));
+      noLink(lines({ ...pr, linking: true }, { count: 6, label: "Hacktoberfest 2026" }));
+      noLink(lines({ ...pr, linking: true }));
+      noLink(lines({ ...pr, linking: false }, { count: 1, label: "Hacktoberfest 2026" }));
+      noLink(lines(pr, { count: 5, label: "Hacktoberfest 2026", qualified }));
+    });
+  });
 });
 
 describe("leaderboardMessage", () => {
