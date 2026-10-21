@@ -94,6 +94,8 @@ export function mergedPrMessage(
     login: string;
     /** The author's Discord id, when they've linked their GitHub account. */
     discordId?: string;
+    /** True when members can link their GitHub account with /link. */
+    linking?: boolean;
     /** Roles this merge earned them. */
     newRoles?: string[];
   },
@@ -112,6 +114,14 @@ export function mergedPrMessage(
     if (q) {
       // Reaching the minimum isn't a win yet: only the top N get the reward.
       description += `\nWith ${countInWindow.count} they now qualify for ${q.reward}, which goes to the top ${q.topN} when the program ends.${q.note ? ` ${q.note}` : ""}`;
+    }
+    // Only unlinked authors get a nudge, on their first counted PR or the one that qualifies them.
+    if (pr.linking && !pr.discordId) {
+      if (q) {
+        description += "\nWinners are contacted by Discord DM, so run `/link` in this server to tell us which Discord account is yours.";
+      } else if (countInWindow.count === 1) {
+        description += "\nNew here? Run `/link` in this server to connect your GitHub account and get the Contributor role.";
+      }
     }
   }
   if (pr.newRoles?.length) {

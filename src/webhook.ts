@@ -4,6 +4,7 @@ import { DiscordError, editMessage, sendMessage } from "./discord";
 import { countMergedPrs, getIssue, searchMergedPrs, type GithubIssue, type StarterIssue } from "./github";
 import { cacheLeaderboard, invalidateLeaderboard, recentMerges, rememberMerges } from "./leaderboard";
 import { getLinkByGithub } from "./links";
+import { linkingEnabled } from "./oauth";
 import { grantEarnedRoles } from "./roles";
 import { mergedPrMessage, releaseMessage, starterIssueMessage, type StarterState } from "./messages";
 
@@ -273,6 +274,7 @@ async function onPullRequest(e: PullRequestEvent, env: Env, cfg: Config): Promis
         url: pr.html_url,
         login: pr.user.login,
         discordId: link?.discordId,
+        linking: linkingEnabled(env),
         newRoles,
       },
       countInWindow
