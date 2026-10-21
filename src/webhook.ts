@@ -2,7 +2,7 @@
 import type { Config, Env } from "./config";
 import { DiscordError, editMessage, sendMessage } from "./discord";
 import { countMergedPrs, getIssue, searchMergedPrs, type GithubIssue, type StarterIssue } from "./github";
-import { cacheLeaderboard, invalidateLeaderboard } from "./leaderboard";
+import { cacheLeaderboard, invalidateLeaderboard, recentMerges, rememberMerges } from "./leaderboard";
 import { getLinkByGithub } from "./links";
 import { grantEarnedRoles } from "./roles";
 import { mergedPrMessage, releaseMessage, starterIssueMessage, type StarterState } from "./messages";
@@ -216,12 +216,24 @@ async function onPullRequest(e: PullRequestEvent, env: Env, cfg: Config): Promis
   if (program) {
     try {
       // GitHub's search index can lag a few seconds behind the merge, so add
-      // this event's PR before counting and caching the leaderboard.
+      // this event's PR, and the ones merged just before it that search doesn't
+      // have yet either, before counting and caching the leaderboard.
       const login = pr.user.login.toLowerCase();
       const searched = await searchMergedPrs(env, cfg, program);
-      const prs = searched.some((p) => p.url === pr.html_url)
-        ? searched
-        : [...searched, { login: pr.user.login, mergedAt: mergedAt.toISOString(), url: pr.html_url, title: pr.title, repo: e.repository.name, number: pr.number}];
+      const indexed = new Set(searched.map((p) => p.url));
+      const pending = [
+        ...(await recentMerges(env, program)),
+        {
+          login: pr.user.login,
+          mergedAt: mergedAt.toISOString(),
+          url: pr.html_url,
+          title: pr.title,
+          repo: e.repository.name,
+          number: pr.number,
+        },
+      ].filter((p, i, all) => !indexed.has(p.url) && all.findIndex((q) => q.url === p.url) === i);
+      await rememberMerges(env, program, pending);
+      const prs = [...searched, ...pending];
       await cacheLeaderboard(env, cfg, program, prs);
       const others = prs.filter((p) => p.login.toLowerCase() === login && p.url !== pr.html_url);
       const count = others.length + 1;

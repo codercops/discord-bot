@@ -87,6 +87,21 @@ export async function cacheLeaderboard(env: Env, cfg: Config, program: Program, 
   return board;
 }
 
+const recentKey = (program: Program) => `recent-merges:${program.id}`;
+
+/** Merges the webhook saw shortly before that search hadn't indexed yet, kept by `rememberMerges`. */
+export async function recentMerges(env: Env, program: Program): Promise<MergedPr[]> {
+  return (await env.STATE.get<MergedPr[]>(recentKey(program), "json")) ?? [];
+}
+
+/**
+ * Keep merges search hasn't indexed yet, for the counts of the merges right after them. Search catches up within
+ * seconds, so the next merge drops them again; the TTL clears what is left once merges stop.
+ */
+export async function rememberMerges(env: Env, program: Program, prs: MergedPr[]): Promise<void> {
+  await env.STATE.put(recentKey(program), JSON.stringify(prs), { expirationTtl: CACHE_TTL_SECONDS });
+}
+
 /** A program's leaderboard, cached in KV for a few minutes to stay inside GitHub's search rate limit. */
 export async function getLeaderboard(
   env: Env,

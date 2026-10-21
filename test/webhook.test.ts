@@ -375,6 +375,59 @@ describe("merged pull requests", () => {
     expect(fetched.discord()[0]?.body.embeds[0].description).not.toContain("That's their");
   });
 
+  it("counts a PR merged seconds earlier that search hasn't indexed yet", async () => {
+    // Search knows three earlier PRs by ada, and neither #139 nor #140 when they are merged five seconds apart.
+    const earlier = Array.from({ length: 3 }, (_, i) => ({
+      html_url: `https://github.com/codercops/toolbelt/pull/${i + 1}`,
+      number: i + 1,
+      title: "Fix a thing",
+      repository_url: "https://api.github.com/repos/codercops/toolbelt",
+      user: { login: "ada" },
+      pull_request: { merged_at: `2026-10-0${i + 1}T00:00:00Z` },
+    }));
+    const fetched = mockFetch(() => ({ total_count: 3, items: earlier }));
+    await handleGithubEvent("pull_request", prEvent(), env, cfg);
+    await handleGithubEvent(
+      "pull_request",
+      prEvent({ number: 140, html_url: "https://github.com/codercops/toolbelt/pull/140", merged_at: "2026-10-11T16:20:05Z" }),
+      env,
+      cfg
+    );
+    const [first, second] = fetched.discord().map((d) => d.body.embeds[0].description as string);
+    expect(first).toContain("That's their 4th merged PR");
+    expect(second).toContain("That's their 5th merged PR");
+    expect(second).toContain("With 5 they now qualify");
+    const cached = JSON.parse(env.STATE.store.get("leaderboard:v3:2026-10") ?? "{}");
+    expect(cached.rows).toEqual([expect.objectContaining({ login: "ada", count: 5 })]);
+  });
+
+  it("drops a remembered merge once search has indexed it", async () => {
+    const pr139 = {
+      html_url: "https://github.com/codercops/toolbelt/pull/139",
+      number: 139,
+      title: "Fix a thing",
+      repository_url: "https://api.github.com/repos/codercops/toolbelt",
+      user: { login: "ada" },
+      pull_request: { merged_at: "2026-10-11T16:20:00Z" },
+    };
+    let indexed: (typeof pr139)[] = [];
+    const fetched = mockFetch(() => ({ total_count: indexed.length, items: indexed }));
+    await handleGithubEvent("pull_request", prEvent(), env, cfg);
+    expect(JSON.parse(env.STATE.store.get("recent-merges:2026-10") ?? "[]")).toHaveLength(1);
+    indexed = [pr139];
+    await handleGithubEvent(
+      "pull_request",
+      prEvent({ number: 140, html_url: "https://github.com/codercops/toolbelt/pull/140", merged_at: "2026-10-11T16:30:00Z" }),
+      env,
+      cfg
+    );
+    expect(JSON.parse(env.STATE.store.get("recent-merges:2026-10") ?? "[]")).toEqual([
+      expect.objectContaining({ url: "https://github.com/codercops/toolbelt/pull/140" }),
+    ]);
+    // #139 was in search and in KV at once, and still counts once.
+    expect(fetched.discord()[1]?.body.embeds[0].description).toContain("That's their 2nd merged PR");
+  });
+
   it("says they qualify on the merge that reaches the minimum, and only on that one", async () => {
     const earlier = (n: number) =>
       Array.from({ length: n }, (_, i) => ({
