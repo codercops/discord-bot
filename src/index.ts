@@ -411,7 +411,7 @@ async function dailyPosts(env: Env, cfg: Config, now: Date): Promise<void> {
       await attempt(`final results ${program.id}`, async () => {
         const posted = `final:${program.id}`;
         if (await env.STATE.get(posted)) return;
-        const board = await getLeaderboard(env, cfg, program, { fresh: true });
+        const board = await getLeaderboard(env, cfg, program, { fresh: true, fallback: false });
         const members = await linkedMembers(env, board.rows.slice(0, 10).map((r) => r.login));
         await sendMessage(
           env,

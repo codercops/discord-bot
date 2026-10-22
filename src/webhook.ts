@@ -1,8 +1,8 @@
 // Handles GitHub webhook events: releases, starter issues and merged PRs.
 import type { Config, Env } from "./config";
 import { DiscordError, editMessage, sendMessage } from "./discord";
-import { countMergedPrs, getIssue, searchMergedPrs, type GithubIssue, type StarterIssue } from "./github";
-import { cacheLeaderboard, invalidateLeaderboard, recentMerges, rememberMerges } from "./leaderboard";
+import { countMergedPrs, getIssue, type GithubIssue, type StarterIssue } from "./github";
+import { cacheLeaderboard, invalidateLeaderboard, recentMerges, rememberMerges, searchCountedPrs } from "./leaderboard";
 import { getLinkByGithub } from "./links";
 import { linkingEnabled } from "./oauth";
 import { grantEarnedRoles } from "./roles";
@@ -220,7 +220,7 @@ async function onPullRequest(e: PullRequestEvent, env: Env, cfg: Config): Promis
       // this event's PR, and the ones merged just before it that search doesn't
       // have yet either, before counting and caching the leaderboard.
       const login = pr.user.login.toLowerCase();
-      const searched = await searchMergedPrs(env, cfg, program);
+      const searched = await searchCountedPrs(env, cfg, program);
       const indexed = new Set(searched.map((p) => p.url));
       const pending = [
         ...(await recentMerges(env, program)),

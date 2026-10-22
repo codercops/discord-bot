@@ -110,6 +110,14 @@ describe("searchMergedPrs", () => {
     return { html_url: url, number: 1, title: "Fix a thing", repository_url: "https://api.github.com/repos/codercops/toolbelt", user: { login }, pull_request: { merged_at: mergedAt } };
   }
 
+  it("throws when GitHub says the search results are incomplete", async () => {
+    const env = makeEnv();
+    const cfg = getConfig(env);
+    const program = { ...baseProgram, repos: cfg.repos };
+    github(() => json({ total_count: 0, incomplete_results: true, items: [] }));
+    await expect(searchMergedPrs(env, cfg, program)).rejects.toThrow("incomplete results");
+  });
+
   it("stops after a page that has fewer than 100 items", async () => {
     const env = makeEnv();
     const cfg = getConfig(env);
@@ -260,5 +268,13 @@ describe("searchMergedPrs", () => {
     const err = await searchMergedPrs(env, cfg, program).catch((e) => e);
     expect(err).toBeInstanceOf(GithubError);
     expect(err.status).toBe(503);
+  });
+});
+
+describe("countMergedPrs with incomplete results", () => {
+  it("throws instead of reporting a count that is too low", async () => {
+    const env = makeEnv();
+    github(() => json({ total_count: 0, incomplete_results: true, items: [] }));
+    await expect(countMergedPrs(env, getConfig(env), "ada")).rejects.toThrow("incomplete results");
   });
 });

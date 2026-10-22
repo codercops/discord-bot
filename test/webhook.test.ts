@@ -458,6 +458,30 @@ describe("merged pull requests", () => {
     }
   );
 
+  it("leaves the count out and keeps the board when search comes back empty after the board had rows", async () => {
+    mockFetch(() => ({
+      total_count: 1,
+      items: [{ html_url: "https://github.com/codercops/toolbelt/pull/1", number: 1, title: "Fix a thing", repository_url: "https://api.github.com/repos/codercops/toolbelt", user: { login: "ada" }, pull_request: { merged_at: "2026-10-02T00:00:00Z" } }],
+    }));
+    await handleGithubEvent("pull_request", prEvent(), env, cfg);
+    const lastGood = env.STATE.store.get("leaderboard:last:2026-10");
+    expect(lastGood).toBeDefined();
+
+    // During an outage GitHub's search answered 0 without flagging the results as incomplete.
+    const fetched = mockFetch(() => ({ total_count: 0, items: [] }));
+    await handleGithubEvent(
+      "pull_request",
+      prEvent({ number: 140, html_url: "https://github.com/codercops/toolbelt/pull/140", merged_at: "2026-10-11T17:00:00Z" }),
+      env,
+      cfg
+    );
+    const description = fetched.discord()[0]?.body.embeds[0].description as string;
+    expect(description).toContain("got a PR merged");
+    expect(description).not.toContain("That's their");
+    expect(env.STATE.store.get("leaderboard:last:2026-10")).toBe(lastGood);
+    expect(env.STATE.store.has("leaderboard:v3:2026-10")).toBe(false);
+  });
+
   it("drops a remembered merge once search has indexed it", async () => {
     const pr139 = {
       html_url: "https://github.com/codercops/toolbelt/pull/139",

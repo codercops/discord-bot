@@ -67,6 +67,10 @@ export function rankContributors(prs: MergedPr[], opts: RankOptions): Leaderboar
 
 const cacheKey = (program: Program) => `leaderboard:v3:${program.id}`;
 const CACHE_TTL_SECONDS = 600;
+/** The last board that had rows, kept without a TTL for when GitHub's search fails. */
+const lastGoodKey = (program: Program) => `leaderboard:last:${program.id}`;
+/** How long a fallback board is served before search is tried again (KV's shortest TTL). */
+const RETRY_TTL_SECONDS = 60;
 
 export interface Leaderboard {
   rows: LeaderboardRow[];
@@ -83,8 +87,27 @@ export async function cacheLeaderboard(env: Env, cfg: Config, program: Program, 
     }),
     generatedAt: new Date().toISOString(),
   };
-  await env.STATE.put(cacheKey(program), JSON.stringify(board), { expirationTtl: CACHE_TTL_SECONDS });
+  const json = JSON.stringify(board);
+  await env.STATE.put(cacheKey(program), json, { expirationTtl: CACHE_TTL_SECONDS });
+  if (board.rows.length) await env.STATE.put(lastGoodKey(program), json);
   return board;
+}
+
+async function lastGoodLeaderboard(env: Env, program: Program): Promise<Leaderboard | null> {
+  return env.STATE.get<Leaderboard>(lastGoodKey(program), "json");
+}
+
+/**
+ * Every PR that counts for a program, from GitHub's search. Merged PRs don't disappear, so an empty answer after
+ * the board has had rows means search is failing (during an incident on 2026-10-22 it answered 0 without flagging
+ * the results as incomplete), and it throws like any other failed search.
+ */
+export async function searchCountedPrs(env: Env, cfg: Config, program: Program): Promise<MergedPr[]> {
+  const prs = await searchMergedPrs(env, cfg, program);
+  if (prs.length === 0 && (await lastGoodLeaderboard(env, program))?.rows.length) {
+    throw new Error(`GitHub search found no merged PRs for ${program.id}, but the leaderboard had rows before`);
+  }
+  return prs;
 }
 
 const recentKey = (program: Program) => `recent-merges:${program.id}`;
@@ -107,13 +130,26 @@ export async function getLeaderboard(
   env: Env,
   cfg: Config,
   program: Program,
-  opts: { fresh?: boolean } = {}
+  /**
+   * `fresh` skips the cache. `fallback: false` throws when search fails instead of returning the last good board,
+   * for the final results, which go out once and should rather wait for the next run.
+   */
+  opts: { fresh?: boolean; fallback?: boolean } = {}
 ): Promise<Leaderboard> {
   if (!opts.fresh) {
     const cached = await env.STATE.get<Leaderboard>(cacheKey(program), "json");
     if (cached) return cached;
   }
-  const prs = await searchMergedPrs(env, cfg, program);
+  let prs: MergedPr[];
+  try {
+    prs = await searchCountedPrs(env, cfg, program);
+  } catch (err) {
+    const last = opts.fallback === false ? null : await lastGoodLeaderboard(env, program);
+    if (!last) throw err;
+    console.error(`leaderboard ${program.id}: search failed, serving the board from ${last.generatedAt}`, err);
+    await env.STATE.put(cacheKey(program), JSON.stringify(last), { expirationTtl: RETRY_TTL_SECONDS });
+    return last;
+  }
   return cacheLeaderboard(env, cfg, program, prs);
 }
 
