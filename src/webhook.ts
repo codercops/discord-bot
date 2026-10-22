@@ -236,7 +236,9 @@ async function onPullRequest(e: PullRequestEvent, env: Env, cfg: Config): Promis
       await rememberMerges(env, program, pending);
       const prs = [...searched, ...pending];
       await cacheLeaderboard(env, cfg, program, prs);
-      const others = prs.filter((p) => p.login.toLowerCase() === login && p.url !== pr.html_url);
+      const others = prs.filter(
+        (p) => p.login.toLowerCase() === login && p.url !== pr.html_url && Date.parse(p.mergedAt) <= mergedAt.getTime()
+      );
       const count = others.length + 1;
       countInWindow = {
         count,

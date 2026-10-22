@@ -401,6 +401,63 @@ describe("merged pull requests", () => {
     expect(cached.rows).toEqual([expect.objectContaining({ login: "ada", count: 5 })]);
   });
 
+  it.each([
+    { earlierCount: 3, laterCount: 5, lateCount: 4, qualifyingPr: "140" },
+    { earlierCount: 4, laterCount: 6, lateCount: 5, qualifyingPr: "139" },
+  ])(
+    "uses merge time for late events with $earlierCount earlier PRs and qualifies only on #$qualifyingPr",
+    async ({ earlierCount, laterCount, lateCount, qualifyingPr }) => {
+      const earlier = Array.from({ length: earlierCount }, (_, i) => ({
+        html_url: `https://github.com/codercops/toolbelt/pull/${i + 1}`,
+        number: i + 1,
+        title: "Fix an earlier thing",
+        repository_url: "https://api.github.com/repos/codercops/toolbelt",
+        user: { login: "ada" },
+        pull_request: { merged_at: `2026-10-0${i + 1}T00:00:00Z` },
+      }));
+      const pr139 = {
+        html_url: "https://github.com/codercops/toolbelt/pull/139",
+        number: 139,
+        title: "Fix the earlier merge",
+        repository_url: "https://api.github.com/repos/codercops/toolbelt",
+        user: { login: "ada" },
+        pull_request: { merged_at: "2026-10-11T16:20:00Z" },
+      };
+      const pr140 = {
+        html_url: "https://github.com/codercops/toolbelt/pull/140",
+        number: 140,
+        title: "Fix the later merge",
+        repository_url: "https://api.github.com/repos/codercops/toolbelt",
+        user: { login: "ada" },
+        pull_request: { merged_at: "2026-10-11T16:20:14Z" },
+      };
+      const fetched = mockFetch(() => ({ total_count: earlier.length + 2, items: [...earlier, pr139, pr140] }));
+
+      // #140 is handled on time, before #139's delayed webhook arrives.
+      await handleGithubEvent(
+        "pull_request",
+        prEvent({ number: 140, html_url: pr140.html_url, merged_at: pr140.pull_request.merged_at }),
+        env,
+        cfg
+      );
+      // #139 merged first, but its event arrives after #140 has already merged.
+      await handleGithubEvent("pull_request", prEvent(), env, cfg);
+
+      const descriptions = fetched.discord().map((d) => d.body.embeds[0].description as string);
+      expect(descriptions[0]).toContain(`That's their ${laterCount}th merged PR`);
+      expect(descriptions[1]).toContain(`That's their ${lateCount}th merged PR`);
+      expect(descriptions.filter((description) => description.includes("they now qualify"))).toHaveLength(1);
+      const qualifyingIndex = qualifyingPr === "139" ? 1 : 0;
+      expect(descriptions[qualifyingIndex]).toContain("they now qualify");
+      expect(descriptions[1 - qualifyingIndex]).not.toContain("they now qualify");
+      expect(descriptions[qualifyingIndex]).toContain(`That's their ${qualifyingPr === "139" ? lateCount : laterCount}th merged PR`);
+
+      // The board still caches all merges, including #140 when #139's late event is handled.
+      const cached = JSON.parse(env.STATE.store.get("leaderboard:v3:2026-10") ?? "{}");
+      expect(cached.rows).toEqual([expect.objectContaining({ login: "ada", count: earlierCount + 2 })]);
+    }
+  );
+
   it("drops a remembered merge once search has indexed it", async () => {
     const pr139 = {
       html_url: "https://github.com/codercops/toolbelt/pull/139",
