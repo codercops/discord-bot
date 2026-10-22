@@ -2,6 +2,7 @@
 import type { Config, Env } from "./config";
 import { countMergedPrs } from "./github";
 import { saveLink } from "./links";
+import { roleLabel } from "./messages";
 import { exchangeCode, linkingEnabled, readState, type DiscordIdentity } from "./oauth";
 import { grantEarnedRoles, isMaintainer } from "./roles";
 
@@ -73,7 +74,7 @@ export async function completeLink(env: Env, cfg: Config, query: URLSearchParams
     lines: [
       `${identity.name} on Discord is now linked to github.com/${login}.`,
       roles.length > 0
-        ? `You already have merged pull requests with us, so you now have the ${roles.join(" and ")} role.`
+        ? `You already have merged pull requests with us, so you now have the ${roleLabel(roles)}.`
         : isMaintainer(cfg, login)
           ? "Your merged pull requests will show up under your name in the server."
           : mergedPrs > 0

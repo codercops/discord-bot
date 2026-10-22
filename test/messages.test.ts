@@ -113,6 +113,13 @@ describe("mergedPrMessage", () => {
     expect(text).not.toContain("That's their");
   });
 
+  it("says role for one new role and roles for several", () => {
+    const one = mergedPrMessage({ ...pr, newRoles: ["Contributor"] }).embeds?.[0]?.description ?? "";
+    expect(one).toContain("That earns them the **Contributor** role.");
+    const two = mergedPrMessage({ ...pr, newRoles: ["Contributor", "Top Contributor"] }).embeds?.[0]?.description ?? "";
+    expect(two).toContain("That earns them the **Contributor** and **Top Contributor** roles.");
+  });
+
   it("adds the running count when it's known", () => {
     const text = mergedPrMessage(pr, { count: 3, label: "Hacktoberfest 2026" }).embeds?.[0]?.description ?? "";
     expect(text).toContain("That's their 3rd merged PR on the Hacktoberfest 2026 leaderboard.");

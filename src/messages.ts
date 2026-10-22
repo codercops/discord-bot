@@ -85,6 +85,9 @@ const person = (login: string, discordId?: string) =>
 
 const joinNames = (names: string[]) => names.join(", ").replace(/, ([^,]*)$/, " and $1");
 
+/** "the **Contributor** role" for one name, "the **Contributor** and **Top Contributor** roles" for more. */
+export const roleLabel = (names: string[]) => `${joinNames(names)} ${names.length === 1 ? "role" : "roles"}`;
+
 export function mergedPrMessage(
   pr: {
     repo: string;
@@ -125,7 +128,7 @@ export function mergedPrMessage(
     }
   }
   if (pr.newRoles?.length) {
-    description += `\nThat earns them the ${joinNames(pr.newRoles.map((r) => `**${r}**`))} role.`;
+    description += `\nThat earns them the ${roleLabel(pr.newRoles.map((r) => `**${r}**`))}.`;
   }
   return { embeds: [{ description, color: COLOR.merged }] };
 }
@@ -396,7 +399,7 @@ export function meReply(input: {
     `You're linked to **${escapeMarkdown(input.login)}** on GitHub.`,
     `Merged PRs in our repos: **${input.merged}**.`,
   ];
-  if (input.newRoles.length) lines.push(`You now have the ${joinNames(input.newRoles.map((r) => `**${r}**`))} role.`);
+  if (input.newRoles.length) lines.push(`You now have the ${roleLabel(input.newRoles.map((r) => `**${r}**`))}.`);
   if (input.maintainer) lines.push("You're a maintainer, so you're not on the leaderboard and the contributor roles aren't for you.");
 
   const s = input.standing;

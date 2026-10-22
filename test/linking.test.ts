@@ -160,6 +160,18 @@ describe("GET /link/callback", () => {
     ]);
   });
 
+  it("says roles when linking earns more than one role", async () => {
+    const fetched = mockFetch(search(5), discordApi());
+    const res = await callback({ code: "the-code", state: await validState() });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("you now have the Contributor and Top Contributor roles.");
+    expect(fetched.calls.filter((c) => c.url.includes("/roles/")).map((c) => new URL(c.url).pathname)).toEqual([
+      "/api/v10/guilds/guild-1/members/42/roles/role-contributor",
+      "/api/v10/guilds/guild-1/members/42/roles/role-top",
+    ]);
+  });
+
   it("tells people without a verified GitHub connection how to add one, and stores nothing", async () => {
     for (const connections of [[], [{ type: "github", id: "1", name: "Ada", verified: false }], [{ type: "twitch", id: "1", name: "Ada", verified: true }], [{ type: "github", id: "1", name: "not a login!", verified: true }]]) {
       const fetched = mockFetch(search(0), discordApi({ connections }));
@@ -348,6 +360,13 @@ describe("/link, /unlink and /me", () => {
     expect(decodeURIComponent(lifetime!.url).replace(/\+/g, " ")).toContain("is:pr is:merged author:Ada repo:codercops/chatcops repo:codercops/ogcops repo:codercops/toolbelt");
   });
 
+  it("/me says roles when it grants more than one", async () => {
+    await saveLink(env, ada);
+    mockFetch(search(5), discordApi({ memberRoles: [] }));
+    const reply = await run("me");
+    expect(reply.content).toContain("You now have the **Contributor** and **Top Contributor** roles.");
+  });
+
   it("/me tells a maintainer why they have no standing and no roles", async () => {
     await saveLink(env, { ...ada, githubLogin: "anurag629" });
     const fetched = mockFetch(search(40), discordApi({ memberRoles: [] }));
@@ -490,7 +509,7 @@ describe("linked members in posts", () => {
     const text = mergedPrMessage({ repo: "toolbelt", number: 9, title: "Fix", url: "https://x/9", login: "bob", newRoles: [] }).embeds?.[0]?.description;
     expect(text).toBe("**bob** got a PR merged in **toolbelt**: [Fix](https://x/9)");
     expect(mergedPrMessage({ repo: "t", number: 1, title: "x", url: "https://x/1", login: "ada", discordId: "42", newRoles: ["Contributor", "Top Contributor"] }).embeds?.[0]?.description).toContain(
-      "That earns them the **Contributor** and **Top Contributor** role."
+      "That earns them the **Contributor** and **Top Contributor** roles."
     );
   });
 
