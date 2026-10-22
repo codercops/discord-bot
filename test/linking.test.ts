@@ -503,3 +503,60 @@ describe("linked members in posts", () => {
     expect(embed?.description).toContain("Congratulations to **Ada** (<@42>).");
   });
 });
+
+describe("/leaderboard", () => {
+  const user = { id: "42", name: "Ada" };
+  // Six merged PRs for Ada and five for bob: both reach the minimum, so both win.
+  const winners = () => ({
+    total_count: 11,
+    items: [
+      ...Array.from({ length: 6 }, (_, i) => ({
+        html_url: `https://github.com/codercops/toolbelt/pull/${i + 1}`,
+        number: i + 1,
+        title: "Fix a thing",
+        repository_url: "https://api.github.com/repos/codercops/toolbelt",
+        user: { login: "Ada" },
+        pull_request: { merged_at: `2026-10-0${i + 1}T00:00:00Z` },
+      })),
+      ...Array.from({ length: 5 }, (_, i) => ({
+        html_url: `https://github.com/codercops/toolbelt/pull/${i + 11}`,
+        number: i + 11,
+        title: "Fix another thing",
+        repository_url: "https://api.github.com/repos/codercops/toolbelt",
+        user: { login: "bob" },
+        pull_request: { merged_at: `2026-10-1${i}T00:00:00Z` },
+      })),
+    ],
+  });
+  const afterTheEnd = new Date("2026-11-05T00:00:00Z");
+
+  it("after the end, asks winners who haven't linked to run /link and ends with the closing note", async () => {
+    const env = makeEnv({ LINKING: "on", DISCORD_CLIENT_SECRET: SECRET, FINAL_RESULTS_NOTE: "Add it to your profile." });
+    await saveLink(env, ada); // Ada linked, bob didn't.
+    mockFetch(winners);
+    const embed = (await runCommand({ name: "leaderboard" }, user, env, getConfig(env), afterTheEnd)).embeds?.[0];
+    expect(embed?.title).toBe("Hacktoberfest 2026 leaderboard: final results");
+    expect(embed?.description).toContain("Congratulations to **Ada** (<@42>), **bob**.");
+    expect(embed?.description).toContain("**bob**: run `/link` in this server so we know which Discord account is yours.");
+    expect(embed?.description).toContain("Add it to your profile.");
+  });
+
+  it("leaves the /link line out when linking is off", async () => {
+    const env = makeEnv({ FINAL_RESULTS_NOTE: "Add it to your profile." });
+    mockFetch(winners);
+    const embed = (await runCommand({ name: "leaderboard" }, user, env, getConfig(env), afterTheEnd)).embeds?.[0];
+    expect(embed?.description).toContain("Congratulations to **Ada**, **bob**.");
+    expect(embed?.description).not.toContain("/link");
+  });
+
+  it("doesn't change the reply while the program is running", async () => {
+    const env = makeEnv({ LINKING: "on", DISCORD_CLIENT_SECRET: SECRET, FINAL_RESULTS_NOTE: "Add it to your profile." });
+    await saveLink(env, ada);
+    mockFetch(winners);
+    const embed = (await runCommand({ name: "leaderboard" }, user, env, getConfig(env), now)).embeds?.[0];
+    expect(embed?.title).toBe("Hacktoberfest 2026 leaderboard");
+    expect(embed?.description).not.toContain("/link");
+    expect(embed?.description).not.toContain("Add it to your profile.");
+    expect(embed?.description).not.toContain("Congratulations");
+  });
+});
