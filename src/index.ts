@@ -263,10 +263,14 @@ async function handleContributor(
       "No card yet",
       [
         `${login} has no counted pull requests in ${program.title}.`,
-        `A card appears with the first merged pull request that counts. The leaderboard is at ${new URL(boardPath, request.url).href}`,
+        "A card appears with the first merged pull request that counts.",
       ],
       false,
-      "No card"
+      "No card",
+      [
+        { label: "See the leaderboard", href: boardPath },
+        { label: "Find an issue", href: env.ISSUES_URL },
+      ]
     );
     return new Response(body, { status: 404, headers: { ...PAGE_HEADERS, "Cache-Control": "no-store", "Content-Security-Policy": CONTRIBUTOR_CSP } });
   }

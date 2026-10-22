@@ -325,6 +325,10 @@ describe("GET /leaderboard/{id}/u/{login}", () => {
     const html = await page.text();
     expect(html).toContain("<h1>No card yet</h1>");
     expect(html).toContain("bob has no counted pull requests in Hacktoberfest 2026.");
+    expect(html).toContain("A card appears with the first merged pull request that counts.");
+    expect(html).not.toContain("The leaderboard is at");
+    expect(html).toContain('<a href="/leaderboard/2026-10">See the leaderboard</a>');
+    expect(html).toContain('<a href="https://github.com/search?q=example">Find an issue</a>');
     expect((await get("/leaderboard/2026-10/u/bob.png")).status).toBe(404);
     expect((await get("/leaderboard/2025-01/u/ada")).status).toBe(404);
     expect((await get("/leaderboard/2026-10/u/-ada")).status).toBe(404);

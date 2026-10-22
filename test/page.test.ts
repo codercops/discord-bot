@@ -163,6 +163,32 @@ describe("noticePage", () => {
     const html = noticePage("Done", ["Everything is linked."], true);
     expect(html).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg">');
   });
+
+  it("omits the cta section when no links are given", () => {
+    const html = noticePage("Done", ["Everything is linked."], true);
+    expect(html).not.toContain('<div class="cta">');
+    const htmlEmpty = noticePage("Done", ["Everything is linked."], true, "Done", []);
+    expect(htmlEmpty).not.toContain('<div class="cta">');
+  });
+
+  it("renders action links with the cta style when provided", () => {
+    const html = noticePage("No card yet", ["No pull requests."], false, "No card", [
+      { label: "See the leaderboard", href: "/leaderboard/2026-10" },
+      { label: "Find an issue", href: "https://example.com/issues" },
+    ]);
+    expect(html).toContain('<div class="cta">');
+    expect(html).toContain('<a href="/leaderboard/2026-10">See the leaderboard</a>');
+    expect(html).toContain('<a href="https://example.com/issues">Find an issue</a>');
+  });
+
+  it("escapes html in link label and href", () => {
+    const evil = noticePage("Notice", ["Line"], false, "Status", [
+      { label: '<script>alert("xss")</script>', href: '/path?a="&b=<' },
+    ]);
+    expect(evil).toContain("&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;");
+    expect(evil).toContain('href="/path?a=&quot;&amp;b=&lt;"');
+    expect(evil).not.toContain("<script>");
+  });
 });
 
 describe("contributorPage", () => {
