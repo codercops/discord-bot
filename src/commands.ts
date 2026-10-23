@@ -83,7 +83,9 @@ export async function runCommand(
         return leaderboardMessage(board, program, {
           final: programStatus(program, now) === "ended",
           url: leaderboardUrl(cfg, program),
+          finalNote: cfg.finalResultsNote,
           members: await linkedMembers(env, board.rows.slice(0, 10).map((r) => r.login)),
+          linking: linkingEnabled(env),
         });
       }
       case "link": {

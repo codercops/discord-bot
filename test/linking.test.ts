@@ -343,6 +343,45 @@ describe("/link, /unlink and /me", () => {
     expect((await run("me")).content).toBe("You haven't linked a GitHub account yet. Run `/link` first.");
   });
 
+  describe("/leaderboard after the program ends", () => {
+    const after = new Date("2026-11-01T10:00:00Z");
+    const endedEnv = (linking: boolean) =>
+      makeEnv({
+        ...(linking ? { LINKING: "on", DISCORD_CLIENT_SECRET: SECRET } : {}),
+        FINAL_RESULTS_NOTE: "See you next year.",
+      });
+
+    it("asks unlinked winners to run /link and ends with the closing note", async () => {
+      const e = endedEnv(true);
+      mockFetch(search(5));
+      const reply = await runCommand({ name: "leaderboard" }, user, e, getConfig(e), after);
+      const text = reply.embeds?.[0]?.description ?? "";
+      expect(text).toContain("Congratulations to **Ada**");
+      expect(text).toContain("run `/link` in this server");
+      expect(text).toContain("See you next year.");
+    });
+
+    it("leaves out the /link line when linking is off", async () => {
+      const e = endedEnv(false);
+      mockFetch(search(5));
+      const reply = await runCommand({ name: "leaderboard" }, user, e, getConfig(e), after);
+      const text = reply.embeds?.[0]?.description ?? "";
+      expect(text).toContain("Congratulations to **Ada**");
+      expect(text).not.toContain("/link");
+      expect(text).toContain("See you next year.");
+    });
+
+    it("keeps the reply for a running program unchanged", async () => {
+      const e = endedEnv(true);
+      mockFetch(search(5));
+      const reply = await runCommand({ name: "leaderboard" }, user, e, getConfig(e), now);
+      const text = reply.embeds?.[0]?.description ?? "";
+      expect(text).not.toContain("Congratulations");
+      expect(text).not.toContain("/link");
+      expect(text).not.toContain("See you next year.");
+    });
+  });
+
   it("/me shows the member's count, their place in the current program and any role they were owed", async () => {
     await saveLink(env, ada);
     const fetched = mockFetch(search(4), discordApi({ memberRoles: [] }));
