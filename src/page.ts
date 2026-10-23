@@ -182,8 +182,13 @@ export function leaderboardPage(
       const names = joinNames(
         unlinked.map((r) => `<a href="https://github.com/${encodeURIComponent(r.login)}">${escapeHtml(r.login)}</a>`)
       );
-      const qualifyVerb = unlinked.length === 1 ? "qualifies but hasn't" : "qualify but haven't";
-      unlinkedNotice = `<p class="unlinked">${names} ${qualifyVerb} linked their GitHub yet. <a href="${escapeHtml(links.discord)}">Join the Discord</a> and run <code>/link</code> there, so we can reach you if you win.</p>`;
+      if (state.status === "ended") {
+        const verb = unlinked.length === 1 ? "won but hasn't" : "won but haven't";
+        unlinkedNotice = `<p class="unlinked">${names} ${verb} linked their GitHub yet. <a href="${escapeHtml(links.discord)}">Join the Discord</a> and run <code>/link</code> there, so we can reach you.</p>`;
+      } else {
+        const qualifyVerb = unlinked.length === 1 ? "qualifies but hasn't" : "qualify but haven't";
+        unlinkedNotice = `<p class="unlinked">${names} ${qualifyVerb} linked their GitHub yet. <a href="${escapeHtml(links.discord)}">Join the Discord</a> and run <code>/link</code> there, so we can reach you if you win.</p>`;
+      }
     }
   }
 

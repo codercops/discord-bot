@@ -125,7 +125,7 @@ describe("leaderboardPage", () => {
     // In 'after', ada is a winner (winner: true), bob qualifies but is outside top 5 (winner: false)
     const ended = leaderboardPage(board, program, links, after, { linking: true, members: new Map() });
     expect(ended).toContain(
-      '<p class="unlinked"><a href="https://github.com/ada">ada</a> qualifies but hasn\'t linked their GitHub yet. <a href="https://discord.gg/example">Join the Discord</a> and run <code>/link</code> there, so we can reach you if you win.</p>'
+      '<p class="unlinked"><a href="https://github.com/ada">ada</a> won but hasn\'t linked their GitHub yet. <a href="https://discord.gg/example">Join the Discord</a> and run <code>/link</code> there, so we can reach you.</p>'
     );
     // The unlinked notice should only mention winners (ada), not qualifiers like bob
     const unlinkedPart = ended.slice(ended.indexOf('<p class="unlinked"'), ended.indexOf('</p>', ended.indexOf('<p class="unlinked"')) + 4);
