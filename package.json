@@ -1,6 +1,6 @@
 {
   "name": "codercops-discord-bot",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "The CODERCOPS community bot: posts releases, starter issues and merged PRs from our open source repos into Discord.",
   "license": "MIT",
