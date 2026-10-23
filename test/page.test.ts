@@ -221,6 +221,7 @@ describe("leaderboardPage", () => {
   });
 
   it("has the same share preview tags as a contributor page, pointing at its own image", () => {
+    expect(html).toContain('<meta property="og:type" content="website">');
     expect(html).toContain('<meta property="og:image" content="https://bot.example/leaderboard/2026-10.png?v=abc">');
     expect(html).toContain('<meta property="og:image:width" content="1200">');
     expect(html).toContain('<meta property="og:image:height" content="630">');
