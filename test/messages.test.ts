@@ -245,10 +245,18 @@ describe("leaderboardMessage", () => {
   });
 
   it("handles a final result with no qualifiers and an empty board", () => {
-    const none = leaderboardMessage({ ...board, rows: [row("bob", 2)] }, program, { final: true }).embeds?.[0];
-    expect(none?.description).toContain("Nobody reached 5 merged PRs");
+    const empty = leaderboardMessage({ ...board, rows: [] }, program, { final: true }).embeds?.[0];
+    expect(empty?.description).toContain("No merged pull requests were counted.");
+    expect(empty?.description).not.toContain("be the first");
+    // closing note should be added
+    const withNote = leaderboardMessage({ ...board, rows: [] }, program, { final: true, finalNote: "Add it to your profile." }).embeds?.[0];
+    expect(withNote?.description).toContain("Add it to your profile.");
+  });
+
+  it("handles a running empty board", () => {
     const empty = leaderboardMessage({ ...board, rows: [] }, program).embeds?.[0];
     expect(empty?.description).toContain("No merged PRs counted yet");
+    expect(empty?.description).toContain("be the first");
   });
 });
 
