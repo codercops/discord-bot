@@ -447,13 +447,28 @@ describe("the card cache", () => {
     const { ctx, settle } = makeCtx();
     await worker.fetch(new Request("https://bot.example/leaderboard/2026-10/u/Ada.png", { method: "HEAD" }), env, ctx);
     await settle();
-    const stored = cache.entries.get("https://bot.example/leaderboard/2026-10/u/Ada.png");
+    const keys = [...cache.entries.keys()];
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatch(/^https:\/\/bot\.example\/leaderboard\/2026-10\/u\/Ada\.png\?v=1-1-1-/);
+    const stored = cache.entries.get(keys[0]!);
     expect(stored).toBeDefined();
     expect(stored!.body.byteLength).toBeGreaterThan(0);
 
     // A GET after the HEAD still gets the whole picture.
     const res = await worker.fetch(new Request("https://bot.example/leaderboard/2026-10/u/Ada.png"), env, ctx);
     expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  });
+
+  it("draws the card once per version, whatever ?v= or letter case the address has", async () => {
+    mockFetch(search);
+    const { ctx, settle } = makeCtx();
+    for (const path of ["/leaderboard/2026-10/u/Ada.png?v=1", "/leaderboard/2026-10/u/ada.png?v=2", "/leaderboard/2026-10/u/ADA.png", "/leaderboard/2026-10/u/Ada.png?v=x&y=z"]) {
+      const res = await worker.fetch(new Request(`https://bot.example${path}`), env, ctx);
+      expect(res.status).toBe(200);
+      await settle();
+    }
+    expect(rendered).toHaveLength(1);
+    expect(cache.entries.size).toBe(1);
   });
 });
 
@@ -584,8 +599,38 @@ describe("the board image cache", () => {
     const { ctx, settle } = makeCtx();
     await worker.fetch(new Request("https://bot.example/leaderboard/2026-10.png", { method: "HEAD" }), env, ctx);
     await settle();
-    const stored = cache.entries.get("https://bot.example/leaderboard/2026-10.png");
+    const keys = [...cache.entries.keys()];
+    expect(keys).toHaveLength(1);
+    const stored = cache.entries.get(keys[0]!);
     expect(stored).toBeDefined();
     expect(stored!.body.byteLength).toBeGreaterThan(0);
+  });
+
+  it("draws the image once per board version, whatever ?v= the address has", async () => {
+    mockFetch(search);
+    const { ctx, settle } = makeCtx();
+    const html = await (await worker.fetch(new Request("https://bot.example/leaderboard/2026-10"), env, ctx)).text();
+    const image = /<meta property="og:image" content="([^"]+)">/.exec(html)![1]!;
+    for (const query of ["?v=1", "?v=2", "", "?v=x&y=z"]) {
+      const res = await worker.fetch(new Request(`https://bot.example/leaderboard/2026-10.png${query}`), env, ctx);
+      expect(res.status).toBe(200);
+      await settle();
+    }
+    expect(rendered).toHaveLength(1);
+    // Stored under the address the page shares, so a preview of it finds the copy.
+    expect([...cache.entries.keys()]).toEqual([image]);
+  });
+
+  it("draws a new image once the board changes", async () => {
+    mockFetch(search);
+    const { ctx, settle } = makeCtx();
+    await worker.fetch(new Request("https://bot.example/leaderboard/2026-10.png?v=1"), env, ctx);
+    await settle();
+    env = makeEnv();
+    mockFetch(() => ({ ...search(), total_count: 2, items: [...search().items, { ...search().items[0]!, html_url: "https://github.com/codercops/toolbelt/pull/2", number: 2 }] }));
+    await worker.fetch(new Request("https://bot.example/leaderboard/2026-10.png?v=1"), env, ctx);
+    await settle();
+    expect(rendered).toHaveLength(2);
+    expect(cache.entries.size).toBe(2);
   });
 });

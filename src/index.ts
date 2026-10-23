@@ -146,6 +146,16 @@ async function handleLeaderboardPage(request: Request, env: Env, id: string | un
   }
 }
 
+// The cache key for a drawn image: its path and the version worked out here,
+// whatever `?v=` the request carries. Keyed on the address asked for, every new
+// `?v=` value would mean a new picture to draw. The key is always a GET, because
+// the cache only takes those, so a HEAD finds and stores the image under the
+// same key as a GET (otherwise the cache would throw, and the image would be
+// left empty for the next GET).
+function imageKey(path: string, version: string, request: Request): Request {
+  return new Request(new URL(`${path}?v=${encodeURIComponent(version)}`, request.url).href);
+}
+
 // A program's leaderboard as a share image: /leaderboard/{id}.png. The page's
 // og:image points here.
 async function handleLeaderboardImage(request: Request, env: Env, ctx: ExecutionContext, id: string): Promise<Response> {
@@ -156,13 +166,6 @@ async function handleLeaderboardImage(request: Request, env: Env, ctx: Execution
 
   // The image is the same for everyone and costs some CPU to draw, so keep it at the edge.
   const cache = typeof caches !== "undefined" ? await caches.open("cards").catch(() => undefined) : undefined;
-  // The cache only takes GET requests, and it keys on the address. So a HEAD
-  // asks for the image under the key a GET uses, and stores it there too:
-  // otherwise the cache would throw, and the image would be left empty for the
-  // next GET.
-  const cacheKey = request.method === "GET" ? request : new Request(request.url);
-  const cached = await cache?.match(cacheKey);
-  if (cached) return cached;
 
   let board;
   try {
@@ -174,6 +177,10 @@ async function handleLeaderboardImage(request: Request, env: Env, ctx: Execution
       headers: { "Content-Type": "text/plain; charset=utf-8", "Retry-After": "60" },
     });
   }
+
+  const cacheKey = imageKey(`/leaderboard/${program.id}.png`, boardVersion(board.rows, program, now), request);
+  const cached = await cache?.match(cacheKey);
+  if (cached) return cached;
 
   // Loaded on demand: this module pulls in the rasterizer and the fonts.
   const { fetchAvatar, renderPng } = await import("./card-image");
@@ -234,16 +241,6 @@ async function handleContributor(
   const program = findProgram(cfg, programId);
   if (!program) return new Response("not found", { status: 404 });
 
-  // The card is the same for everyone and costs some CPU to draw, so keep it at the edge.
-  const cache = asPng && typeof caches !== "undefined" ? await caches.open("cards").catch(() => undefined) : undefined;
-  // The cache only takes GET requests, and it keys on the address. So a HEAD
-  // asks for the card under the key a GET uses, and stores it there too:
-  // otherwise the cache would throw, and the card would be left empty for the
-  // next GET.
-  const cacheKey = request.method === "GET" ? request : new Request(request.url);
-  const cached = await cache?.match(cacheKey);
-  if (cached) return cached;
-
   let board;
   try {
     board = await getLeaderboard(env, cfg, program);
@@ -279,8 +276,16 @@ async function handleContributor(
   const of = board.rows.length;
   const status = programStatus(program, now);
   const path = `${boardPath}/u/${encodeURIComponent(row.login)}`;
+  // The version makes share previews pick up a new image when the numbers change.
+  const version = `${row.count}-${rank}-${of}-${status}`;
 
   if (asPng) {
+    // The card is the same for everyone and costs some CPU to draw, so keep it at the edge.
+    const cache = typeof caches !== "undefined" ? await caches.open("cards").catch(() => undefined) : undefined;
+    const cacheKey = imageKey(`${path}.png`, version, request);
+    const cached = await cache?.match(cacheKey);
+    if (cached) return cached;
+
     // Loaded on demand: this module pulls in the rasterizer and the fonts.
     const { fetchAvatar, renderPng } = await import("./card-image");
     const svg = cardSvg({
@@ -300,8 +305,6 @@ async function handleContributor(
     return response;
   }
 
-  // The version makes share previews pick up a new image when the numbers change.
-  const version = `${row.count}-${rank}-${of}-${status}`;
   const prsQuery = `org:${cfg.org} is:pr is:merged author:${row.login} label:"${program.label}" merged:${program.start.toISOString().slice(0, 10)}..${program.end.toISOString().slice(0, 10)}`;
   const html = contributorPage(
     { program, row, rank, of, generatedAt: board.generatedAt },
