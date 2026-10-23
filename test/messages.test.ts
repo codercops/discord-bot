@@ -225,6 +225,15 @@ describe("leaderboardMessage", () => {
     expect(embed?.description).not.toContain("more to qualify");
   });
 
+  it("says 'qualified' for qualifiers who didn't win once the program is over", () => {
+    const qualifiers = { ...board, rows: [row("ada", 6, true, true), row("bob", 5, true)] };
+    const final = leaderboardMessage(qualifiers, program, { final: true }).embeds?.[0]?.description;
+    expect(final).toContain("2. **bob** · 5 merged PRs · qualified");
+    // While it runs, they are still in the running.
+    const running = leaderboardMessage(qualifiers, program).embeds?.[0]?.description;
+    expect(running).toContain("2. **bob** · 5 merged PRs · qualifies");
+  });
+
   it("asks winners who haven't linked to run /link, since the form goes out by DM", () => {
     const winners = { ...board, rows: [row("ada", 6, true, true), row("Bob", 5, true, true), row("cy", 5, true, true)] };
     const text = (members: Map<string, string>) =>

@@ -156,7 +156,9 @@ export function leaderboardMessage(
     const prs = `${row.count} merged ${row.count === 1 ? "PR" : "PRs"}`;
     // Same as the chips on the page: a countdown while it runs, nothing once it's over.
     const countdown = opts.final ? "" : ` · ${minPrs - row.count} more to qualify`;
-    const note = row.winner ? (opts.final ? " · winner" : " · in the top " + topN) : row.qualifies ? " · qualifies" : countdown;
+    const note = row.winner
+      ? opts.final ? " · winner" : " · in the top " + topN
+      : row.qualifies ? (opts.final ? " · qualified" : " · qualifies") : countdown;
     return `${i + 1}. ${who(row.login)} · ${prs}${note}`;
   });
   const winners = board.rows.filter((r) => r.winner);
