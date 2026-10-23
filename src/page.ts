@@ -111,6 +111,7 @@ h1{font:700 clamp(28px,6vw,40px)/1.15 ui-monospace,SFMono-Regular,Menlo,monospac
 .status{display:inline-block;font:600 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:7px 11px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin:0 0 28px}
 .status.running{color:var(--cyan);border-color:var(--cyan)}
 .status.ended{color:var(--gold);border-color:var(--gold)}
+.unlinked{margin:0 0 24px;color:var(--muted);font-size:14px;line-height:1.5}
 .lede{margin-bottom:14px}
 .others{margin:0 0 36px}
 .others h2{font:600 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
@@ -147,13 +148,15 @@ export interface PageLinks {
   others: { title: string; path: string }[];
 }
 
+const joinNames = (names: string[]) => names.join(", ").replace(/, ([^,]*)$/, " and $1");
+
 export function leaderboardPage(
   board: Leaderboard,
   program: Program,
   links: PageLinks,
   now: Date,
   /** `linking`: members can link their GitHub account with /link, which is how we find a winner on Discord. */
-  opts: { linking?: boolean } = {}
+  opts: { linking?: boolean; members?: Map<string, string> } = {}
 ): string {
   const { title, label, start, end, minPrs, topN, reward, note } = program;
   const heading = `${title} leaderboard`;
@@ -168,6 +171,21 @@ export function leaderboardPage(
   const imageAlt = board.rows.length
     ? `Share image: ${heading}. ${top}.`
     : `Share image: ${heading}. No merged pull requests counted yet.`;
+
+  let unlinkedNotice = "";
+  if (opts.linking && opts.members) {
+    const candidates = state.status === "ended"
+      ? board.rows.filter((r) => r.winner)
+      : board.rows.filter((r) => r.qualifies);
+    const unlinked = candidates.filter((r) => !opts.members?.has(r.login.toLowerCase()));
+    if (unlinked.length > 0) {
+      const names = joinNames(
+        unlinked.map((r) => `<a href="https://github.com/${encodeURIComponent(r.login)}">${escapeHtml(r.login)}</a>`)
+      );
+      const qualifyVerb = unlinked.length === 1 ? "qualifies but hasn't" : "qualify but haven't";
+      unlinkedNotice = `<p class="unlinked">${names} ${qualifyVerb} linked their GitHub yet. <a href="${escapeHtml(links.discord)}">Join the Discord</a> and run <code>/link</code> there, so we can reach you if you win.</p>`;
+    }
+  }
 
   const rows = board.rows
     .map((row, i) => {
@@ -211,6 +229,7 @@ export function leaderboardPage(
 <h1>${escapeHtml(heading)}</h1>
 <p class="lede">Merged pull requests in ${escapeHtml(repos)}, ${when}.</p>
 <p class="status ${state.status}">${escapeHtml(state.text)}</p>
+${unlinkedNotice}
 ${board.rows.length ? `<ol class="board">\n${rows}\n</ol>` : `<div class="board"><p class="empty">${state.status === "ended" ? "No merged pull requests were counted." : "No merged pull requests counted yet. Pick an issue and be the first."}</p></div>`}
 <section class="rules">
 <h2>How it works</h2>

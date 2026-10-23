@@ -123,8 +123,22 @@ async function handleLeaderboardPage(request: Request, env: Env, id: string | un
       .filter((p) => p.id !== program.id)
       .reverse()
       .map((p) => ({ title: p.title, path: `/leaderboard/${p.id}` }));
+
+    // When linking is enabled, look up which qualifying users have linked their GitHub account.
+    const linking = linkingEnabled(env);
+    let members: Map<string, string> | undefined;
+    if (linking) {
+      const qualifying = board.rows.filter((r) => r.qualifies).map((r) => r.login);
+      try {
+        members = await linkedMembers(env, qualifying);
+      } catch (err) {
+        console.error("failed to look up linked members", err);
+      }
+    }
+
     const html = leaderboardPage(board, program, { issues: env.ISSUES_URL, discord: env.DISCORD_INVITE, self, image, others }, now, {
-      linking: linkingEnabled(env),
+      linking,
+      members,
     });
     return new Response(html, {
       headers: {

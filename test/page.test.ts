@@ -105,6 +105,65 @@ describe("leaderboardPage", () => {
     expect(leaderboardPage(board, program, links, after, { linking: true })).toContain("We contact the winners by Discord DM.");
   });
 
+  it("names everyone who qualifies and hasn't linked, in board order, with links to their profiles", () => {
+    const unlinked = leaderboardPage(board, program, links, during, { linking: true, members: new Map() });
+    expect(unlinked).toContain(
+      '<p class="unlinked"><a href="https://github.com/ada">ada</a> and <a href="https://github.com/bob">bob</a> qualify but haven\'t linked their GitHub yet. <a href="https://discord.gg/example">Join the Discord</a> and run <code>/link</code> there, so we can reach you if you win.</p>'
+    );
+    // Board order: ada before bob
+    expect(unlinked.indexOf(">ada<")).toBeLessThan(unlinked.indexOf(">bob<"));
+
+    // Nobody who has linked is named; singular verb when only one remains
+    const adaLinked = leaderboardPage(board, program, links, during, { linking: true, members: new Map([["ada", "42"]]) });
+    expect(adaLinked).toContain(
+      '<p class="unlinked"><a href="https://github.com/bob">bob</a> qualifies but hasn\'t linked their GitHub yet. <a href="https://discord.gg/example">Join the Discord</a> and run <code>/link</code> there, so we can reach you if you win.</p>'
+    );
+    expect(adaLinked).not.toContain("ada and");
+  });
+
+  it("names only winners who haven't linked after the end", () => {
+    // In 'after', ada is a winner (winner: true), bob qualifies but is outside top 5 (winner: false)
+    const ended = leaderboardPage(board, program, links, after, { linking: true, members: new Map() });
+    expect(ended).toContain(
+      '<p class="unlinked"><a href="https://github.com/ada">ada</a> qualifies but hasn\'t linked their GitHub yet. <a href="https://discord.gg/example">Join the Discord</a> and run <code>/link</code> there, so we can reach you if you win.</p>'
+    );
+    // The unlinked notice should only mention winners (ada), not qualifiers like bob
+    const unlinkedPart = ended.slice(ended.indexOf('<p class="unlinked"'), ended.indexOf('</p>', ended.indexOf('<p class="unlinked"')) + 4);
+    expect(unlinkedPart).not.toContain("bob");
+  });
+
+  it("adds no unlinked line when linking is off, nobody qualifies, or everyone has linked", () => {
+    // Linking is off
+    expect(leaderboardPage(board, program, links, during, { linking: false, members: new Map() })).not.toContain('class="unlinked"');
+    // Members map not passed / lookup not performed
+    expect(leaderboardPage(board, program, links, during, { linking: true })).not.toContain('class="unlinked"');
+    // Nobody qualifies
+    const nobodyQualifies = { ...board, rows: [row("cy", 2), row("dee", 4)] };
+    expect(leaderboardPage(nobodyQualifies, program, links, during, { linking: true, members: new Map() })).not.toContain('class="unlinked"');
+    // Everyone who qualifies has linked
+    const allLinked = new Map([["ada", "42"], ["bob", "43"]]);
+    expect(leaderboardPage(board, program, links, during, { linking: true, members: allLinked })).not.toContain('class="unlinked"');
+  });
+
+  it("escapes logins in the unlinked line", () => {
+    const evil = leaderboardPage(
+      { ...board, rows: [row('"><script>alert(1)</script>', 6, true, true)] },
+      program,
+      links,
+      during,
+      { linking: true, members: new Map() }
+    );
+    expect(evil).not.toContain("<script>alert(1)</script>");
+    expect(evil).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+  });
+
+  it("shows the unlinked line at phone width", () => {
+    const htmlWithNotice = leaderboardPage(board, program, links, during, { linking: true, members: new Map() });
+    expect(htmlWithNotice).toContain('class="unlinked"');
+    expect(htmlWithNotice).toContain("@media (max-width:520px){.chip{display:none}}");
+    expect(htmlWithNotice).not.toContain(".unlinked{display:none}");
+  });
+
   it("links to issues, Discord and the platform, with escaped URLs", () => {
     expect(html).toContain('href="https://github.com/search?q=x&amp;type=issues"');
     expect(html).toContain('href="https://discord.gg/example"');
@@ -362,5 +421,87 @@ describe("GET /leaderboard", () => {
     const res = await worker.fetch(new Request("https://bot.example/leaderboard"), env, ctx);
     expect(res.status).toBe(503);
     expect(res.headers.get("Retry-After")).toBe("60");
+  });
+
+  it("names qualifying unlinked members when linking is enabled", async () => {
+    env = makeEnv({ LINKING: "on", DISCORD_CLIENT_SECRET: "secret" });
+    mockFetch(() => ({
+      total_count: 11,
+      items: [
+        ...Array.from({ length: 6 }, (_, i) => ({
+          html_url: `https://github.com/codercops/toolbelt/pull/${i + 1}`,
+          number: i + 1,
+          title: "PR",
+          repository_url: "https://api.github.com/repos/codercops/toolbelt",
+          user: { login: "ada" },
+          pull_request: { merged_at: "2026-10-02T00:00:00Z" },
+        })),
+        ...Array.from({ length: 5 }, (_, i) => ({
+          html_url: `https://github.com/codercops/toolbelt/pull/${i + 7}`,
+          number: i + 7,
+          title: "PR",
+          repository_url: "https://api.github.com/repos/codercops/toolbelt",
+          user: { login: "bob" },
+          pull_request: { merged_at: "2026-10-03T00:00:00Z" },
+        })),
+      ],
+    }));
+
+    const res = await worker.fetch(new Request("https://bot.example/leaderboard"), env, ctx);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain('class="unlinked"');
+    expect(text).toContain(">ada<");
+    expect(text).toContain(">bob<");
+    expect(text).toContain("qualify but haven't linked their GitHub yet");
+  });
+
+  it("only looks up qualifying rows in KV and keeps the page working if the lookup fails", async () => {
+    env = makeEnv({ LINKING: "on", DISCORD_CLIENT_SECRET: "secret" });
+    mockFetch(() => ({
+      total_count: 6,
+      items: [
+        ...Array.from({ length: 5 }, (_, i) => ({
+          html_url: `https://github.com/codercops/toolbelt/pull/${i + 1}`,
+          number: i + 1,
+          title: "PR",
+          repository_url: "https://api.github.com/repos/codercops/toolbelt",
+          user: { login: "ada" },
+          pull_request: { merged_at: "2026-10-02T00:00:00Z" },
+        })),
+        {
+          html_url: "https://github.com/codercops/toolbelt/pull/6",
+          number: 6,
+          title: "PR",
+          repository_url: "https://api.github.com/repos/codercops/toolbelt",
+          user: { login: "nonqualifying" },
+          pull_request: { merged_at: "2026-10-02T00:00:00Z" },
+        },
+      ],
+    }));
+
+    const lookups: string[] = [];
+    const origGet = env.STATE.get.bind(env.STATE);
+    env.STATE.get = (async (key: string, type?: "json") => {
+      lookups.push(key);
+      return origGet(key, type as any);
+    }) as any;
+
+    const res = await worker.fetch(new Request("https://bot.example/leaderboard"), env, ctx);
+    expect(res.status).toBe(200);
+    // Only ada qualified (5 PRs >= minPrs 5), nonqualifying had 1 PR
+    const linkLookups = lookups.filter((k) => k.startsWith("link:github:"));
+    expect(linkLookups).toEqual(["link:github:ada"]);
+    expect(linkLookups).not.toContain("link:github:nonqualifying");
+
+    // If KV lookup throws for link keys, page still renders 200 without the line
+    env.STATE.get = (async (key: string, type?: "json") => {
+      if (key.startsWith("link:github:")) throw new Error("KV read failed");
+      return origGet(key, type as any);
+    }) as any;
+    const failRes = await worker.fetch(new Request("https://bot.example/leaderboard"), env, ctx);
+    expect(failRes.status).toBe(200);
+    const failHtml = await failRes.text();
+    expect(failHtml).not.toContain('class="unlinked"');
   });
 });
