@@ -220,6 +220,12 @@ describe("leaderboardPage", () => {
     expect(html).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg">');
   });
 
+  it("declares the leaderboard page as an Open Graph website", () => {
+    expect(html.match(/<meta property="og:type" content="[^"]+">/g)).toEqual([
+      '<meta property="og:type" content="website">',
+    ]);
+  });
+
   it("has the same share preview tags as a contributor page, pointing at its own image", () => {
     expect(html).toContain('<meta property="og:image" content="https://bot.example/leaderboard/2026-10.png?v=abc">');
     expect(html).toContain('<meta property="og:image:width" content="1200">');

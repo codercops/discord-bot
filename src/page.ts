@@ -215,6 +215,7 @@ export function leaderboardPage(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(heading)}</title>
 <meta name="description" content="${escapeHtml(description)}">
+<meta property="og:type" content="website">
 <meta property="og:title" content="${escapeHtml(heading)}">
 <meta property="og:description" content="${escapeHtml(description)}">
 <meta property="og:image" content="${escapeHtml(links.image)}">
