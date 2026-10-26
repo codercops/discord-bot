@@ -609,6 +609,123 @@ describe("merged pull requests", () => {
   });
 });
 
+describe("late program label on a merged pull request", () => {
+  const mergedPr = (over: Record<string, unknown> = {}) => ({
+    number: 139,
+    title: "fix(url-encoder): show an error",
+    html_url: "https://github.com/codercops/toolbelt/pull/139",
+    repository_url: "https://api.github.com/repos/codercops/toolbelt",
+    merged: true,
+    merged_at: "2026-10-11T16:20:00Z",
+    user: { login: "ada", type: "User" },
+    labels: [{ name: "hacktoberfest-accepted" }],
+    ...over,
+  });
+  const prEvent = (action: string, overPr: Record<string, unknown> = {}, label?: string) => ({
+    action,
+    repository,
+    ...(label ? { label: { name: label } } : {}),
+    pull_request: mergedPr(overPr),
+  });
+  const earlier = (n: number) => ({
+    total_count: n,
+    items: Array.from({ length: n }, (_, i) => ({
+      html_url: `https://github.com/codercops/toolbelt/pull/${i + 1}`,
+      number: i + 1,
+      title: "Fix a thing",
+      repository_url: "https://api.github.com/repos/codercops/toolbelt",
+      user: { login: "ada" },
+      pull_request: { merged_at: `2026-10-0${i + 1}T00:00:00Z` },
+    })),
+  });
+  // A merge that arrived without the program label, so its shoutout has no count yet.
+  // No search runs for it, so the mock's search answer doesn't matter here.
+  const postUncountedShoutout = async () => {
+    await handleGithubEvent("pull_request", prEvent("closed", { labels: [] }), env, cfg);
+  };
+  const board = () => JSON.parse(env.STATE.store.get("leaderboard:v3:2026-10") ?? "{}");
+
+  it("edits the shoutout to the count and qualify lines, and refreshes the board", async () => {
+    const fetched = mockFetch(() => earlier(4));
+    await postUncountedShoutout();
+    expect(fetched.discord()).toHaveLength(1);
+    expect(fetched.discord()[0]?.body.embeds[0].description).not.toContain("That's their");
+    fetched.clear();
+
+    expect(await handleGithubEvent("pull_request", prEvent("labeled", {}, "hacktoberfest-accepted"), env, cfg)).toBe(
+      "updated merged pull request shoutout"
+    );
+    const edits = fetched.discord();
+    expect(edits).toHaveLength(1);
+    expect(edits[0]?.method).toBe("PATCH");
+    expect(edits[0]?.url).toBe("https://discord.com/api/v10/channels/chan-merged/messages/msg-1");
+    const description = edits[0]?.body.embeds[0].description as string;
+    expect(description).toContain("That's their 5th merged PR on the Hacktoberfest 2026 leaderboard.");
+    expect(description).toContain("With 5 they now qualify");
+    expect(board().rows).toEqual([expect.objectContaining({ login: "ada", count: 5 })]);
+  });
+
+  it("edits in the count without the qualify line when the minimum isn't reached", async () => {
+    const fetched = mockFetch(() => earlier(1));
+    await postUncountedShoutout();
+    fetched.clear();
+    await handleGithubEvent("pull_request", prEvent("labeled", {}, "hacktoberfest-accepted"), env, cfg);
+    const description = fetched.discord()[0]?.body.embeds[0].description as string;
+    expect(description).toContain("That's their 2nd merged PR");
+    expect(description).not.toContain("they now qualify");
+    expect(board().rows).toEqual([expect.objectContaining({ login: "ada", count: 2 })]);
+  });
+
+  it("doesn't count twice when search already includes this PR", async () => {
+    const fetched = mockFetch(() => ({
+      total_count: 5,
+      items: [
+        ...earlier(4).items,
+        { html_url: "https://github.com/codercops/toolbelt/pull/139", number: 139, title: "fix(url-encoder): show an error", repository_url: "https://api.github.com/repos/codercops/toolbelt", user: { login: "ada" }, pull_request: { merged_at: "2026-10-11T16:20:00Z" } },
+      ],
+    }));
+    await postUncountedShoutout();
+    fetched.clear();
+    await handleGithubEvent("pull_request", prEvent("labeled", {}, "hacktoberfest-accepted"), env, cfg);
+    expect(fetched.discord()[0]?.body.embeds[0].description).toContain("That's their 5th merged PR");
+    expect(board().rows).toEqual([expect.objectContaining({ login: "ada", count: 5 })]);
+  });
+
+  it("changes nothing for an open PR, another label, or a shoutout that already has the count", async () => {
+    const fetched = mockFetch(() => earlier(0));
+    expect(await handleGithubEvent("pull_request", prEvent("labeled", { merged: false, merged_at: null }, "hacktoberfest-accepted"), env, cfg)).toBe("ignored pull request");
+    expect(await handleGithubEvent("pull_request", prEvent("labeled", { labels: [{ name: "bug" }] }, "bug"), env, cfg)).toBe("ignored pull request");
+    expect(await handleGithubEvent("pull_request", prEvent("labeled", { merged_at: "2026-11-02T00:00:00Z" }, "hacktoberfest-accepted"), env, cfg)).toBe("ignored pull request");
+    expect(fetched.discord()).toHaveLength(0);
+
+    // This merge had the label all along, so its shoutout already has the count.
+    await handleGithubEvent("pull_request", prEvent("closed"), env, cfg);
+    fetched.clear();
+    expect(await handleGithubEvent("pull_request", prEvent("labeled", {}, "hacktoberfest-accepted"), env, cfg)).toBe("ignored pull request");
+    expect(fetched.discord()).toHaveLength(0);
+  });
+
+  it("refreshes the board but doesn't edit when the shoutout record is gone", async () => {
+    const fetched = mockFetch(() => earlier(4));
+    await postUncountedShoutout();
+    await env.STATE.delete("merged-pr:toolbelt#139");
+    fetched.clear();
+    expect(await handleGithubEvent("pull_request", prEvent("labeled", {}, "hacktoberfest-accepted"), env, cfg)).toBe("late label, board refreshed");
+    expect(fetched.discord()).toHaveLength(0);
+    expect(board().rows).toEqual([expect.objectContaining({ login: "ada", count: 5 })]);
+  });
+
+  it("leaves the shoutout alone and clears the board when search fails", async () => {
+    mockFetch(() => earlier(4));
+    await postUncountedShoutout();
+    await env.STATE.put("leaderboard:v3:2026-10", JSON.stringify({ rows: [], generatedAt: "earlier" }));
+    const fetched = mockFetch(() => new Response("unavailable", { status: 503 }));
+    expect(await handleGithubEvent("pull_request", prEvent("labeled", {}, "hacktoberfest-accepted"), env, cfg)).toBe("late label, shoutout unchanged");
+    expect(fetched.discord()).toHaveLength(0);
+    expect(env.STATE.store.has("leaderboard:v3:2026-10")).toBe(false);
+  });
+});
+
 const rateLimit = () => new Response(JSON.stringify({ retry_after: 30 }), { status: 429 });
 const onGithub = (over: Record<string, unknown> = {}) => () => ({ ...issueEvent("edited").issue, ...over });
 

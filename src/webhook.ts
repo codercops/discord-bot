@@ -1,5 +1,5 @@
 // Handles GitHub webhook events: releases, starter issues and merged PRs.
-import type { Config, Env } from "./config";
+import type { Config, Env, Program } from "./config";
 import { DiscordError, editMessage, sendMessage } from "./discord";
 import { countMergedPrs, getIssue, type GithubIssue, type StarterIssue } from "./github";
 import { cacheLeaderboard, invalidateLeaderboard, recentMerges, rememberMerges, searchCountedPrs } from "./leaderboard";
@@ -30,6 +30,8 @@ interface IssuesEvent {
 interface PullRequestEvent {
   action: string;
   repository: Repository;
+  /** The label that was added, on labeled events. */
+  label?: { name: string };
   pull_request: {
     number: number;
     title: string;
@@ -199,12 +201,78 @@ export async function resyncStarterIssues(env: Env, cfg: Config): Promise<void> 
   }
 }
 
+/** The shoutout a merged PR got, so a late label can edit it instead of posting again. */
+interface ShoutoutRecord {
+  messageId: string;
+  /** True when the shoutout already carries a count line. */
+  counted: boolean;
+  discordId?: string;
+  linking?: boolean;
+  newRoles?: string[];
+}
+
+const shoutoutKey = (repo: string, number: number) => `merged-pr:${repo}#${number}`;
+/** A late label usually lands soon after the merge, so a few days is plenty. */
+const SHOUTOUT_TTL_SECONDS = 3 * 24 * 60 * 60;
+
+/**
+ * Counts a PR for a program and caches the board, the way a merge does.
+ * Returns undefined when the count couldn't be worked out; the cached board
+ * is cleared then, so a stale one is never served.
+ */
+async function countForProgram(
+  env: Env,
+  cfg: Config,
+  program: Program,
+  e: PullRequestEvent,
+  mergedAt: Date
+): Promise<Parameters<typeof mergedPrMessage>[1] | undefined> {
+  const pr = e.pull_request;
+  try {
+    // GitHub's search index can lag a few seconds behind the merge, so add
+    // this event's PR, and the ones merged just before it that search doesn't
+    // have yet either, before counting and caching the leaderboard.
+    const login = pr.user.login.toLowerCase();
+    const searched = await searchCountedPrs(env, cfg, program);
+    const indexed = new Set(searched.map((p) => p.url));
+    const pending = [
+      ...(await recentMerges(env, program)),
+      {
+        login: pr.user.login,
+        mergedAt: mergedAt.toISOString(),
+        url: pr.html_url,
+        title: pr.title,
+        repo: e.repository.name,
+        number: pr.number,
+      },
+    ].filter((p, i, all) => !indexed.has(p.url) && all.findIndex((q) => q.url === p.url) === i);
+    await rememberMerges(env, program, pending);
+    const prs = [...searched, ...pending];
+    await cacheLeaderboard(env, cfg, program, prs);
+    const others = prs.filter(
+      (p) => p.login.toLowerCase() === login && p.url !== pr.html_url && Date.parse(p.mergedAt) <= mergedAt.getTime()
+    );
+    const count = others.length + 1;
+    return {
+      count,
+      label: program.title,
+      // Said once, on the merge that takes them to the minimum.
+      qualified: count === program.minPrs ? { topN: program.topN, reward: program.reward, note: program.note } : undefined,
+    };
+  } catch {
+    // The shoutout matters more than the count; don't serve an old board.
+    await invalidateLeaderboard(env, program);
+    return undefined;
+  }
+}
+
 async function onPullRequest(e: PullRequestEvent, env: Env, cfg: Config): Promise<string> {
   const pr = e.pull_request;
-  if (e.action !== "closed" || !pr.merged || !ours(cfg, e.repository)) return "ignored pull request";
+  if (!ours(cfg, e.repository)) return "ignored pull request";
   if (pr.user.type === "Bot" || cfg.excludedUsers.has(pr.user.login.toLowerCase())) return "ignored pull request author";
+  if (e.action === "labeled") return onLateLabel(e, env, cfg);
+  if (e.action !== "closed" || !pr.merged) return "ignored pull request";
 
-  let countInWindow: Parameters<typeof mergedPrMessage>[1];
   const mergedAt = pr.merged_at ? new Date(pr.merged_at) : new Date();
   // The program this PR counts for, if any.
   const program = cfg.programs.find(
@@ -214,43 +282,7 @@ async function onPullRequest(e: PullRequestEvent, env: Env, cfg: Config): Promis
       mergedAt >= p.start &&
       mergedAt <= p.end
   );
-  if (program) {
-    try {
-      // GitHub's search index can lag a few seconds behind the merge, so add
-      // this event's PR, and the ones merged just before it that search doesn't
-      // have yet either, before counting and caching the leaderboard.
-      const login = pr.user.login.toLowerCase();
-      const searched = await searchCountedPrs(env, cfg, program);
-      const indexed = new Set(searched.map((p) => p.url));
-      const pending = [
-        ...(await recentMerges(env, program)),
-        {
-          login: pr.user.login,
-          mergedAt: mergedAt.toISOString(),
-          url: pr.html_url,
-          title: pr.title,
-          repo: e.repository.name,
-          number: pr.number,
-        },
-      ].filter((p, i, all) => !indexed.has(p.url) && all.findIndex((q) => q.url === p.url) === i);
-      await rememberMerges(env, program, pending);
-      const prs = [...searched, ...pending];
-      await cacheLeaderboard(env, cfg, program, prs);
-      const others = prs.filter(
-        (p) => p.login.toLowerCase() === login && p.url !== pr.html_url && Date.parse(p.mergedAt) <= mergedAt.getTime()
-      );
-      const count = others.length + 1;
-      countInWindow = {
-        count,
-        label: program.title,
-        // Said once, on the merge that takes them to the minimum.
-        qualified: count === program.minPrs ? { topN: program.topN, reward: program.reward, note: program.note } : undefined,
-      };
-    } catch {
-      // The shoutout matters more than the count; don't serve an old board.
-      await invalidateLeaderboard(env, program);
-    }
-  }
+  const countInWindow = program ? await countForProgram(env, cfg, program, e, mergedAt) : undefined;
 
   // If the author linked their GitHub account, show who they are here and
   // hand out any role this merge earned. The shoutout goes out either way.
@@ -265,7 +297,7 @@ async function onPullRequest(e: PullRequestEvent, env: Env, cfg: Config): Promis
     }
   }
 
-  await sendMessage(
+  const messageId = await sendMessage(
     env,
     env.CHANNEL_MERGED_PRS,
     mergedPrMessage(
@@ -282,5 +314,72 @@ async function onPullRequest(e: PullRequestEvent, env: Env, cfg: Config): Promis
       countInWindow
     )
   );
+  // Kept so a program label added after the merge can edit this shoutout
+  // instead of posting a second one. It expires on its own.
+  await env.STATE.put(
+    shoutoutKey(e.repository.name, pr.number),
+    JSON.stringify({
+      messageId,
+      counted: countInWindow !== undefined,
+      discordId: link?.discordId,
+      linking: linkingEnabled(env),
+      newRoles,
+    } satisfies ShoutoutRecord),
+    { expirationTtl: SHOUTOUT_TTL_SECONDS }
+  );
   return "posted merged pull request";
+}
+
+/**
+ * A program label added after the merge, e.g. by the accepted-label workflow
+ * when a maintainer missed it. The PR already has its shoutout, so this edits
+ * that message to the text it would have had at the merge, and refreshes the
+ * board. A PR whose shoutout already has the count, or a label that isn't a
+ * program's, changes nothing.
+ */
+async function onLateLabel(e: PullRequestEvent, env: Env, cfg: Config): Promise<string> {
+  const pr = e.pull_request;
+  if (!pr.merged || !pr.merged_at) return "ignored pull request";
+  const added = e.label?.name;
+  if (!added) return "ignored pull request";
+  const mergedAt = new Date(pr.merged_at);
+  const program = cfg.programs.find(
+    (p) => p.repos.includes(e.repository.name) && p.label === added && mergedAt >= p.start && mergedAt <= p.end
+  );
+  if (!program) return "ignored pull request";
+
+  const record = await env.STATE.get<ShoutoutRecord>(shoutoutKey(e.repository.name, pr.number), "json");
+  if (record?.counted) return "ignored pull request";
+
+  const countInWindow = await countForProgram(env, cfg, program, e, mergedAt);
+  if (!countInWindow) return "late label, shoutout unchanged";
+  // No stored shoutout (it predates this, or its record expired): the board
+  // is refreshed, but there's no message to edit, and guessing at one would
+  // risk editing the wrong message.
+  if (!record) return "late label, board refreshed";
+
+  await editMessage(
+    env,
+    env.CHANNEL_MERGED_PRS,
+    record.messageId,
+    mergedPrMessage(
+      {
+        repo: e.repository.name,
+        number: pr.number,
+        title: pr.title,
+        url: pr.html_url,
+        login: pr.user.login,
+        discordId: record.discordId,
+        linking: record.linking,
+        newRoles: record.newRoles,
+      },
+      countInWindow
+    )
+  );
+  await env.STATE.put(
+    shoutoutKey(e.repository.name, pr.number),
+    JSON.stringify({ ...record, counted: true } satisfies ShoutoutRecord),
+    { expirationTtl: SHOUTOUT_TTL_SECONDS }
+  );
+  return "updated merged pull request shoutout";
 }
