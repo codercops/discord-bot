@@ -119,17 +119,27 @@ interface SearchResult {
   items: { html_url: string; number: number; title: string; repository_url: string; user: { login: string } | null; pull_request?: { merged_at: string | null } }[];
 }
 
-/** Every merged PR that counts for a program: labeled, in its repos, merged inside its window. */
-export async function searchMergedPrs(env: Env, cfg: Config, program: Program): Promise<MergedPr[]> {
-  const { label, start, end } = program;
-  const iso = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
-  const q = [
+/** The GitHub search query for a program's merged PRs. */
+export function mergedPrQuery(
+  cfg: Config,
+  program: Program,
+  { author, dayOnly = false }: { author?: string; dayOnly?: boolean } = {}
+): string {
+  const date = (d: Date) =>
+    dayOnly ? d.toISOString().slice(0, 10) : d.toISOString().replace(/\.\d{3}Z$/, "Z");
+  return [
     "is:pr",
     "is:merged",
-    `label:"${label}"`,
-    `merged:${iso(start)}..${iso(end)}`,
-    ...program.repos.map((r) => `repo:${cfg.org}/${r}`),
+    ...(author ? [`author:${author}`] : []),
+    `label:"${program.label}"`,
+    `merged:${date(program.start)}..${date(program.end)}`,
+    ...program.repos.map((repo) => `repo:${cfg.org}/${repo}`),
   ].join(" ");
+}
+
+/** Every merged PR that counts for a program: labeled, in its repos, merged inside its window. */
+export async function searchMergedPrs(env: Env, cfg: Config, program: Program): Promise<MergedPr[]> {
+  const q = mergedPrQuery(cfg, program);
 
   const prs: MergedPr[] = [];
   // The search API returns at most 1000 results (10 pages of 100).

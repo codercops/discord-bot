@@ -3,7 +3,7 @@ import { runCommand, type CommandData, type CommandUser } from "./commands";
 import { DAILY_CRON, getConfig, WELCOME_CRON, type Config, type Env } from "./config";
 import { editInteractionReply, sendMessage } from "./discord";
 import { getLeaderboard } from "./leaderboard";
-import { GithubError } from "./github";
+import { GithubError, mergedPrQuery } from "./github";
 import { linkedMembers } from "./links";
 import { completeLink } from "./linking";
 import { leaderboardMessage, LINK_BUTTON_ID, streaksMessage } from "./messages";
@@ -321,7 +321,7 @@ async function handleContributor(
     return response;
   }
 
-  const prsQuery = `org:${cfg.org} is:pr is:merged author:${row.login} label:"${program.label}" merged:${program.start.toISOString().slice(0, 10)}..${program.end.toISOString().slice(0, 10)}`;
+  const prsQuery = mergedPrQuery(cfg, program, { author: row.login, dayOnly: true });
   const html = contributorPage(
     { program, row, rank, of, generatedAt: board.generatedAt },
     {

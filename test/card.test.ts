@@ -314,7 +314,19 @@ describe("GET /leaderboard/{id}/u/{login}", () => {
     expect(html).toContain("https://bot.example/leaderboard/2026-10/u/Ada.png?v=2-1-2-");
     const prs = /href="(https:\/\/github\.com\/search\?[^"]+)"/.exec(html)![1]!.replace(/&amp;/g, "&");
     expect(new URL(prs).searchParams.get("q")).toBe(
-      'org:codercops is:pr is:merged author:Ada label:"hacktoberfest-accepted" merged:2026-10-01..2026-10-31'
+      'is:pr is:merged author:Ada label:"hacktoberfest-accepted" merged:2026-10-01..2026-10-31 repo:codercops/chatcops repo:codercops/ogcops repo:codercops/toolbelt'
+    );
+  });
+
+  it("links to a search scoped to the program's own repos", async () => {
+    env = makeEnv({ PROGRAMS: [{ ...OCTOBER, repos: ["special-repo", "another-repo"] }] });
+    mockFetch(search);
+    const res = await get("/leaderboard/2026-10/u/ada");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    const prs = /href="(https:\/\/github\.com\/search\?[^"]+)"/.exec(html)![1]!.replace(/&amp;/g, "&");
+    expect(new URL(prs).searchParams.get("q")).toBe(
+      'is:pr is:merged author:Ada label:"hacktoberfest-accepted" merged:2026-10-01..2026-10-31 repo:codercops/special-repo repo:codercops/another-repo'
     );
   });
 
