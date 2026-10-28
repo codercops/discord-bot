@@ -197,7 +197,7 @@ export function leaderboardPage(
       const login = escapeHtml(row.login);
       const chip = standing(row, program, state.status);
       const chipHtml = chip ? `<span class="chip ${chip.kind}">${escapeHtml(chip.text)}</span>` : "";
-      const card = `<a class="cardlink" href="/leaderboard/${escapeHtml(program.id)}/u/${encodeURIComponent(row.login)}" title="${login}'s share card">Card</a>`;
+      const card = `<a class="cardlink" href="/leaderboard/${escapeHtml(program.id)}/u/${encodeURIComponent(row.login)}" title="${login}'s share card" aria-label="${login}'s share card">Card</a>`;
       const prList = row.prs
         .map(
           (pr) =>

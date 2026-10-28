@@ -107,6 +107,13 @@ describe("leaderboardPage", () => {
     expect(html).toContain('<a class="cardlink" href="/leaderboard/2026-10/u/ada"');
   });
 
+  it("gives each Card link the person's share card accessible name", () => {
+    const cards = html.match(/<a class="cardlink"[^>]*>Card<\/a>/g);
+    expect(cards).toEqual(board.rows.map(({ login }) =>
+      `<a class="cardlink" href="/leaderboard/2026-10/u/${login}" title="${login}'s share card" aria-label="${login}'s share card">Card</a>`
+    ));
+  });
+
   it("states the rules, the window and who the reward comes from", () => {
     expect(html).toContain("Merged pull requests in chatcops, ogcops and toolbelt, Oct 1 to Oct 31, 2026 (UTC).");
     expect(html).toContain('<p class="status running">Running now. 20 days left.</p>');
