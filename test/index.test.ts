@@ -250,7 +250,7 @@ describe("POST /github", () => {
     globalThis.fetch = (async () => new Response("nope", { status: 500 })) as typeof fetch;
     const { ctx } = makeCtx();
     const body = {
-      action: "published",
+      action: "released",
       repository: { name: "toolbelt", owner: { login: "codercops" } },
       release: { name: "v1", tag_name: "v1", body: "", html_url: "https://github.com/codercops/toolbelt/releases/tag/v1", draft: false, prerelease: false },
     };

@@ -301,9 +301,9 @@ describe("starter issue feed", () => {
 describe("releases", () => {
   const release = { name: "v0.6.2", tag_name: "v0.6.2", body: "Fixes", html_url: "https://github.com/codercops/toolbelt/releases/tag/v0.6.2", draft: false, prerelease: false };
 
-  it("posts published releases to the releases channel", async () => {
+  it("posts releases to the releases channel", async () => {
     const fetched = mockFetch();
-    expect(await handleGithubEvent("release", { action: "published", repository, release }, env, cfg)).toBe("posted release");
+    expect(await handleGithubEvent("release", { action: "released", repository, release }, env, cfg)).toBe("posted release");
     expect(fetched.discord()[0]?.url).toBe("https://discord.com/api/v10/channels/chan-releases/messages");
     expect(fetched.discord()[0]?.body.embeds[0].title).toBe("toolbelt v0.6.2");
   });
@@ -311,9 +311,18 @@ describe("releases", () => {
   it("ignores drafts, prereleases and other actions", async () => {
     const fetched = mockFetch();
     await handleGithubEvent("release", { action: "created", repository, release }, env, cfg);
-    await handleGithubEvent("release", { action: "published", repository, release: { ...release, draft: true } }, env, cfg);
-    await handleGithubEvent("release", { action: "published", repository, release: { ...release, prerelease: true } }, env, cfg);
+    await handleGithubEvent("release", { action: "published", repository, release }, env, cfg);
+    await handleGithubEvent("release", { action: "released", repository, release: { ...release, draft: true } }, env, cfg);
+    await handleGithubEvent("release", { action: "released", repository, release: { ...release, prerelease: true } }, env, cfg);
     expect(fetched.discord()).toHaveLength(0);
+  });
+
+  it("posts a prerelease once it's promoted to a full release", async () => {
+    const fetched = mockFetch();
+    await handleGithubEvent("release", { action: "published", repository, release: { ...release, prerelease: true } }, env, cfg);
+    await handleGithubEvent("release", { action: "edited", repository, release }, env, cfg);
+    expect(await handleGithubEvent("release", { action: "released", repository, release }, env, cfg)).toBe("posted release");
+    expect(fetched.discord()).toHaveLength(1);
   });
 });
 

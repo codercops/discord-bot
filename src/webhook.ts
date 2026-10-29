@@ -62,7 +62,7 @@ export async function handleGithubEvent(event: string, payload: unknown, env: En
 }
 
 async function onRelease(e: ReleaseEvent, env: Env, cfg: Config): Promise<string> {
-  if (e.action !== "published" || e.release.draft || e.release.prerelease || !ours(cfg, e.repository)) {
+  if (e.action !== "released" || e.release.draft || e.release.prerelease || !ours(cfg, e.repository)) {
     return "ignored release";
   }
   await sendMessage(env, env.CHANNEL_RELEASES, releaseMessage(e.repository.name, e.release));
