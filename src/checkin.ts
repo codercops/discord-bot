@@ -86,6 +86,24 @@ export function rankStreaks(records: CheckinRecord[], today: string): (CheckinRe
 
 const key = (roadmapId: string, userId: string) => `checkin:${roadmapId}:${userId}`;
 
+// KV has no compare-and-swap. Serialize the read/validate/write claim within
+// this Worker isolate so concurrent requests can't both claim the same day.
+const checkinLocks = new Map<string, Promise<void>>();
+
+async function withCheckinLock<T>(recordKey: string, fn: () => Promise<T>): Promise<T> {
+  const previous = checkinLocks.get(recordKey);
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  checkinLocks.set(recordKey, current);
+  await previous;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (checkinLocks.get(recordKey) === current) checkinLocks.delete(recordKey);
+  }
+}
+
 export async function listCheckins(env: Env): Promise<CheckinRecord[]> {
   const records: CheckinRecord[] = [];
   let cursor: string | undefined;
@@ -113,14 +131,37 @@ export async function recordCheckin(
   if (!roadmap) return null;
 
   const today = localDate(input.now, cfg.checkinUtcOffsetMinutes);
-  const prev = await env.STATE.get<CheckinRecord>(key(roadmap.id, input.userId), "json");
-  const result = applyCheckin(prev, { userId: input.userId, name: input.name, roadmap, today, day: input.day });
-  if (!result.ok) return { result, roadmap, threadId: prev?.threadId ?? undefined };
+  const recordKey = key(roadmap.id, input.userId);
+  const claim = await withCheckinLock(recordKey, async () => {
+    const prev = await env.STATE.get<CheckinRecord>(recordKey, "json");
+    const result = applyCheckin(prev, { userId: input.userId, name: input.name, roadmap, today, day: input.day });
+    if (!result.ok) return { prev, result };
 
+    // Persist the day's claim before the Discord round trip. A concurrent
+    // request then sees the claim and cannot create a duplicate post/thread.
+    await env.STATE.put(recordKey, JSON.stringify(result.record));
+    return { prev, result };
+  });
+  if (!claim.result.ok) {
+    return { result: claim.result, roadmap, threadId: claim.prev?.threadId ?? undefined };
+  }
+
+  const { result, prev } = claim;
   const { record } = result;
   const post = checkinPost({ userId: record.userId, roadmap, record, note: input.note, finished: result.finished });
-  record.threadId = await postToLog(env, roadmap, record, post);
-  await env.STATE.put(key(roadmap.id, record.userId), JSON.stringify(record));
+  try {
+    record.threadId = await postToLog(env, roadmap, record, post);
+  } catch (err) {
+    // Release the claim if Discord rejected the post so the learner can retry.
+    try {
+      if (prev) await env.STATE.put(recordKey, JSON.stringify(prev));
+      else await env.STATE.delete(recordKey);
+    } catch {
+      // Keep the original Discord error; a surviving claim is safer than a duplicate.
+    }
+    throw err;
+  }
+  await env.STATE.put(recordKey, JSON.stringify(record));
   return { result, roadmap, threadId: record.threadId };
 }
 
