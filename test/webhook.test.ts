@@ -198,7 +198,7 @@ describe("starter issue feed", () => {
     const unblocked = issueEvent("unlabeled", {}, "Blocked");
     expect(await handleGithubEvent("issues", unblocked, env, cfg)).toBe("posted starter issue");
     expect(fetched.discord()).toHaveLength(1);
-    expect(fetched.discord()[0]?.body.embeds[0].description).toContain("Comment on the issue to claim it");
+    expect(fetched.discord()[0]?.body.embeds[0].description).toContain("Comment to ask to be assigned");
     expect(await handleGithubEvent("issues", unblocked, env, cfg)).toBe("unchanged starter issue");
     expect(fetched.discord().filter((c) => c.method === "POST")).toHaveLength(1);
   });
@@ -233,14 +233,14 @@ describe("starter issue feed", () => {
     const unavailableEdit = fetched.discord()[1];
     expect(unavailableEdit).toMatchObject({ method: "PATCH", url: "https://discord.com/api/v10/channels/chan-issues/messages/msg-1" });
     expect(unavailableEdit?.body.embeds[0].description).toContain("No longer available.");
-    expect(unavailableEdit?.body.embeds[0].description).not.toContain("Comment on the issue to claim it");
+    expect(unavailableEdit?.body.embeds[0].description).not.toContain("Comment to ask to be assigned");
     expect(unavailableEdit?.body.embeds[0].color).toBe(0xf85149);
 
     // Restore starter label
     const relabeled = issueEvent("labeled", { labels: [{ name: "bug" }, { name: "good first issue" }] }, "good first issue");
     expect(await handleGithubEvent("issues", relabeled, env, cfg)).toBe("updated starter issue (open)");
     const openEdit = fetched.discord()[2];
-    expect(openEdit?.body.embeds[0].description).toContain("Comment on the issue to claim it");
+    expect(openEdit?.body.embeds[0].description).toContain("Comment to ask to be assigned");
     expect(openEdit?.body.embeds[0].color).toBe(0x2ea043);
   });
 
@@ -259,7 +259,7 @@ describe("starter issue feed", () => {
     const unblocked = issueEvent("unlabeled", { labels: [{ name: "bug" }, { name: "good first issue" }] }, "blocked");
     expect(await handleGithubEvent("issues", unblocked, env, cfg)).toBe("updated starter issue (open)");
     const unblockedEdit = fetched.discord()[2];
-    expect(unblockedEdit?.body.embeds[0].description).toContain("Comment on the issue to claim it");
+    expect(unblockedEdit?.body.embeds[0].description).toContain("Comment to ask to be assigned");
     expect(unblockedEdit?.body.embeds[0].color).toBe(0x2ea043);
   });
 
@@ -1053,7 +1053,7 @@ describe("deleted starter issue message", () => {
     const post = fetched.discord()[1];
     expect(post?.method).toBe("POST");
     expect(post?.body.embeds[0].title).toContain("Updated title");
-    expect(post?.body.embeds[0].description).toContain("Comment on the issue to claim it");
+    expect(post?.body.embeds[0].description).toContain("Comment to ask to be assigned");
     expect(post?.body.allowed_mentions).toEqual({ parse: [] });
 
     expect(await handleGithubEvent("issues", edited, env, cfg)).toBe("unchanged starter issue");
