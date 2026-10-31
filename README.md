@@ -148,7 +148,7 @@ Our copy runs from the `production` branch. Cloudflare Workers Builds deploys it
 
 ## Running your own copy
 
-1. Create a Discord application with a bot user and add it to your server with the `bot` and `applications.commands` scopes. It needs View Channels, Send Messages, Embed Links and Read Message History in the channels it posts to. The welcome posts and the roles are optional and need more: see the two sections above.
+1. Create a Discord application with a bot user and add it to your server with the `bot` and `applications.commands` scopes. It needs View Channels, Send Messages, Embed Links and Read Message History in the channels it posts to, plus Send Messages in Threads in the roadmap forums. The welcome posts and the roles are optional and need more: see the two sections above.
 2. Create a KV namespace with `npx wrangler kv namespace create STATE` and put its id in `wrangler.jsonc`.
 3. Fill in the `vars` in `wrangler.jsonc`: your application id and public key, the channel ids, your org and repos.
 4. Set the secrets:
