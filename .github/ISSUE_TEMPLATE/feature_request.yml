@@ -1,0 +1,18 @@
+name: Feature request
+description: Suggest a new command, post or page for the bot
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Who in the community needs this, and what do they do today instead?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should the bot do? If it posts to Discord, say which channel and how often.
+    validations:
+      required: true

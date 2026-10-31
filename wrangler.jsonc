@@ -71,6 +71,39 @@
         "reward": "a CODERCOPS T-shirt and stickers",
         // The reward is ours, not Hacktoberfest's. Say so wherever the leaderboard is shown.
         "note": "This swag comes from CODERCOPS's own open source program. It is separate from Hacktoberfest and its rewards."
+      },
+      {
+        "id": "2026-11",
+        "title": "CODERCOPS November 2026",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2026-11-01T00:00:00Z",
+        "end": "2026-11-30T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
+      },
+      {
+        "id": "2026-12",
+        "title": "CODERCOPS December 2026",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2026-12-01T00:00:00Z",
+        "end": "2026-12-31T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
+      },
+      {
+        "id": "2027-01",
+        "title": "CODERCOPS January 2027",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2027-01-01T00:00:00Z",
+        "end": "2027-01-31T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
       }
     ],
     // Added to a program's final results post.

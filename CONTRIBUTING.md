@@ -7,11 +7,11 @@ Thanks for wanting to help with the bot.
 - Check the open issues. If you want to work on one, comment on it and wait until it's assigned to you. One issue at a time, please. After 3 merged PRs with us you can hold two.
 - For something that isn't an issue yet, open one first so we can agree on it.
 
-## Hacktoberfest and the October program
+## The monthly program
 
-This repo takes part in Hacktoberfest. A PR counts once it's merged and labeled `hacktoberfest-accepted`.
+A PR counts once it's merged and labeled `codercops-accepted`. A workflow adds that label at merge time when every issue the PR closes is assigned to you.
 
-Those PRs also count for [CODERCOPS October 2026](https://oss.codercops.com/leaderboard/2026-10), together with the ones in chatcops, ogcops and toolbelt. That program and its goodies are CODERCOPS's own and separate from Hacktoberfest. The page has the rules.
+Each month has its own leaderboard at [oss.codercops.com/leaderboard](https://oss.codercops.com/leaderboard), counting PRs in chatcops, ogcops, toolbelt and this repo. The page has the rules. People who keep contributing can be invited as maintainers with Triage access, see [GOVERNANCE.md](https://github.com/codercops/.github/blob/main/GOVERNANCE.md).
 
 ## Ground rules
 
@@ -35,7 +35,7 @@ These get closed and labeled `spam`:
 - claiming a pile of issues at once, or bulk and automated submissions
 - untested generated code
 
-Two spam PRs and you won't be assigned more issues this month, and you're out of the CODERCOPS goodies.
+Two spam PRs and you won't be assigned more issues this month, and your PRs stop counting on the leaderboard.
 
 ### Reviews
 

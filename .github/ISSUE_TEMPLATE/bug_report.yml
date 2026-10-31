@@ -1,0 +1,35 @@
+name: Bug report
+description: The bot or the leaderboard site did something wrong
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please don't paste tokens, webhook secrets or anyone's private Discord details here.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where?
+      options:
+        - A slash command (/issues, /leaderboard, /link, /checkin...)
+        - A post in a Discord channel (releases, starter issues, merged PRs, leaderboard)
+        - The leaderboard site (oss.codercops.com)
+        - A share card image
+        - Welcome messages or roles
+        - Other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead? A link to the message or page helps.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true

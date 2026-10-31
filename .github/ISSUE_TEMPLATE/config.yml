@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/codercops/discord-bot/security/advisories/new
+    about: Report security issues privately. Please do not open a public issue.
+  - name: Ask a question on Discord
+    url: https://discord.gg/mpGdJyjaRQ
+    about: Chat with the maintainers and other contributors. Issue claims still happen on GitHub.
