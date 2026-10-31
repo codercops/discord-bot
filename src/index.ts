@@ -2,7 +2,7 @@ import { listCheckins, localDate, rankStreaks } from "./checkin";
 import { runCommand, type CommandData, type CommandUser } from "./commands";
 import { DAILY_CRON, getConfig, WELCOME_CRON, type Config, type Env } from "./config";
 import { editInteractionReply, sendMessage } from "./discord";
-import { manifest as fundingManifest, MANIFEST_URL as FUNDING_MANIFEST_URL } from "./funding";
+import { manifest as fundingManifest, MANIFEST_URLS as FUNDING_MANIFEST_URLS } from "./funding";
 import { getLeaderboard } from "./leaderboard";
 import { GithubError, mergedPrQuery } from "./github";
 import { linkedMembers } from "./links";
@@ -400,7 +400,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     });
   }
   if (read && pathname === "/.well-known/funding-manifest-urls") {
-    return new Response(`${FUNDING_MANIFEST_URL}\n`, {
+    return new Response(`${FUNDING_MANIFEST_URLS.join("\n")}\n`, {
       headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=3600" },
     });
   }

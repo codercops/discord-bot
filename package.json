@@ -12,7 +12,8 @@
     "deploy:production": "wrangler deploy --var GIT_SHA:${WORKERS_CI_COMMIT_SHA:-dev}",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "register": "node scripts/register-commands.mjs"
+    "register": "node scripts/register-commands.mjs",
+    "funding:json": "node --experimental-strip-types --no-warnings -e \"import('./src/funding.ts').then((m) => console.log(JSON.stringify(m.manifest, null, 2)))\""
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261011.1",
