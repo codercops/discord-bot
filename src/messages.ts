@@ -357,6 +357,16 @@ export function linkPrompt(url: string, currentLogin?: string): MessagePayload {
   return { content: lines.join("\n"), components: [row(linkButton("Link my GitHub", url))] };
 }
 
+/** The private reply to /unlink. */
+export function unlinkReply(login: string, rolesRemoved: boolean): MessagePayload {
+  const note = rolesRemoved
+    ? " and took back the contributor roles."
+    : ", but the roles couldn't be removed and a moderator can take them off.";
+  return {
+    content: `Unlinked from **${escapeMarkdown(login)}**. I deleted what I had stored${note} Run \`/link\` if you change your mind.`,
+  };
+}
+
 // ---- /help ----
 
 /**

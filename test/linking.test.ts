@@ -331,11 +331,16 @@ describe("/link, /unlink and /me", () => {
   it("/unlink still unlinks when the member has left or Discord refuses the role change", async () => {
     await saveLink(env, ada);
     mockFetch(search(0), discordApi({ memberRoles: null }));
-    expect((await run("unlink")).content).toContain("Unlinked from **Ada**.");
+    const leftReply = await run("unlink");
+    expect(leftReply.content).toContain("Unlinked from **Ada**.");
+    expect(leftReply.content).toContain("took back the contributor roles");
 
     await saveLink(env, ada);
     mockFetch(search(0), (call) => (call.url.includes("/members/") ? jsonResponse({}, 403) : undefined));
-    expect((await run("unlink")).content).toContain("Unlinked from **Ada**.");
+    const errorReply = await run("unlink");
+    expect(errorReply.content).toContain("Unlinked from **Ada**.");
+    expect(errorReply.content).toContain("the roles couldn't be removed and a moderator can take them off");
+    expect(errorReply.content).not.toContain("took back the contributor roles");
     expect(await getLink(env, "42")).toBeNull();
   });
 
