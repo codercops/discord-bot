@@ -131,6 +131,8 @@ async function writeFeed(env: Env, record: FeedRecord | null, issue: StarterIssu
 
 const rateLimited = (err: unknown) => err instanceof DiscordError && err.status === 429;
 const messageGone = (err: unknown) => err instanceof DiscordError && err.status === 404;
+const retryableGithub = (err: unknown) =>
+  !(err instanceof GithubError) || err.status >= 500 || err.status === 403 || err.status === 429;
 
 // Keeps one message per issue in #starter-issues and edits it as the issue is
 // claimed, released or closed, so the feed always shows what's really free.
@@ -213,6 +215,7 @@ export async function resyncStarterIssues(env: Env, cfg: Config): Promise<void> 
           }
           issue = { repo, number: num, title, url, labels };
         } else {
+          if (retryableGithub(err)) await env.STATE.put(name, "1");
           throw err;
         }
       }

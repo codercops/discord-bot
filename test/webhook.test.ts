@@ -871,6 +871,56 @@ describe("rate limited starter issue feed", () => {
     error.mockRestore();
   });
 
+  it("re-queues the resync when GitHub fails with a 500 error", async () => {
+    await env.STATE.put("resync:toolbelt#124", "1");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetched = mockFetch(() => new Response("Internal Server Error", { status: 500 }));
+    await resyncStarterIssues(env, cfg);
+    expect(fetched.discord()).toHaveLength(0);
+    expect(await env.STATE.get("resync:toolbelt#124")).toBe("1");
+    expect(error).toHaveBeenCalledWith("starter issue resync failed", "resync:toolbelt#124", expect.objectContaining({ status: 500 }));
+    error.mockRestore();
+  });
+
+  it("re-queues the resync when fetching the issue encounters a network error", async () => {
+    await env.STATE.put("resync:toolbelt#124", "1");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetched = mockFetch(() => {
+      throw new TypeError("fetch failed");
+    });
+    await resyncStarterIssues(env, cfg);
+    expect(fetched.discord()).toHaveLength(0);
+    expect(await env.STATE.get("resync:toolbelt#124")).toBe("1");
+    expect(error).toHaveBeenCalledWith("starter issue resync failed", "resync:toolbelt#124", expect.any(TypeError));
+    error.mockRestore();
+  });
+
+  it("re-queues the resync when GitHub rate limits with 403 or 429", async () => {
+    for (const status of [403, 429]) {
+      await env.STATE.put("resync:toolbelt#124", "1");
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const fetched = mockFetch(() => new Response("rate limited", { status }));
+      await resyncStarterIssues(env, cfg);
+      expect(fetched.discord()).toHaveLength(0);
+      expect(await env.STATE.get("resync:toolbelt#124")).toBe("1");
+      expect(error).toHaveBeenCalledWith("starter issue resync failed", "resync:toolbelt#124", expect.objectContaining({ status }));
+      error.mockRestore();
+    }
+  });
+
+  it("drops the resync when GitHub returns other 4xx errors", async () => {
+    for (const status of [400, 422]) {
+      await env.STATE.put("resync:toolbelt#124", "1");
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const fetched = mockFetch(() => new Response("bad request", { status }));
+      await resyncStarterIssues(env, cfg);
+      expect(fetched.discord()).toHaveLength(0);
+      expect(await env.STATE.get("resync:toolbelt#124")).toBeNull();
+      expect(error).toHaveBeenCalledWith("starter issue resync failed", "resync:toolbelt#124", expect.objectContaining({ status }));
+      error.mockRestore();
+    }
+  });
+
   it("lets other Discord errors fail the webhook as before", async () => {
     mockFetch(undefined, () => new Response("{}", { status: 500 }));
     await expect(handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).rejects.toThrow("Discord 500");
