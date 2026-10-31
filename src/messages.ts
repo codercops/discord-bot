@@ -70,7 +70,7 @@ export function starterIssueMessage(issue: StarterIssue, state: StarterState): M
   return {
     embeds: [
       {
-        title: truncate(`${issue.repo} #${issue.number}: ${issue.title}`, 256),
+        title: truncate(issue.title ? `${issue.repo} #${issue.number}: ${issue.title}` : `${issue.repo} #${issue.number}`, 256),
         url: issue.url,
         description: labels ? `${labels}\n${status}` : status,
         color: COLOR[state.kind],

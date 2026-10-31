@@ -1,7 +1,7 @@
 // Handles GitHub webhook events: releases, starter issues and merged PRs.
 import type { Config, Env, Program } from "./config";
 import { DiscordError, editMessage, sendMessage } from "./discord";
-import { countMergedPrs, getIssue, type GithubIssue, type StarterIssue } from "./github";
+import { countMergedPrs, getIssue, GithubError, type GithubIssue, type StarterIssue } from "./github";
 import { cacheLeaderboard, invalidateLeaderboard, recentMerges, rememberMerges, searchCountedPrs } from "./leaderboard";
 import { getLinkByGithub, getLinkByGithubId, saveLink } from "./links";
 import { linkingEnabled } from "./oauth";
@@ -183,10 +183,39 @@ export async function resyncStarterIssues(env: Env, cfg: Config): Promise<void> 
     await env.STATE.delete(name);
     if (!repo || !number) continue;
     try {
-      const current = await getIssue(env, cfg, repo, Number(number));
-      const issue: StarterIssue = { repo, number: current.number, title: current.title, url: current.html_url, labels: current.labels.map((l) => l.name) };
-      const record = await env.STATE.get<FeedRecord>(feedKey(repo, current.number), "json");
-      const state = starterState(current, cfg);
+      const num = Number(number);
+      const record = await env.STATE.get<FeedRecord>(feedKey(repo, num), "json");
+      let issue: StarterIssue;
+      let state: StarterState;
+      try {
+        const current = await getIssue(env, cfg, repo, num);
+        issue = { repo, number: current.number, title: current.title, url: current.html_url, labels: current.labels.map((l) => l.name) };
+        state = starterState(current, cfg);
+      } catch (err) {
+        if (err instanceof GithubError && err.status === 404) {
+          if (!record) continue;
+          state = { kind: "unavailable" };
+          let title = "";
+          let url = `https://github.com/${cfg.org}/${repo}/issues/${number}`;
+          let labels: string[] = [];
+          if (record.message) {
+            try {
+              const snap = JSON.parse(record.message);
+              if (typeof snap.url === "string") url = snap.url;
+              if (typeof snap.title === "string") {
+                const prefix = `${repo} #${number}: `;
+                title = snap.title.startsWith(prefix) ? snap.title.slice(prefix.length) : snap.title;
+              }
+              if (typeof snap.description === "string" && snap.description.includes("\n")) {
+                labels = snap.description.split("\n")[0].split(", ").map((l: string) => l.trim()).filter(Boolean);
+              }
+            } catch {}
+          }
+          issue = { repo, number: num, title, url, labels };
+        } else {
+          throw err;
+        }
+      }
       // Like onIssue, only post issues that are free to take right now.
       if (!record && state.kind !== "open") continue;
       await writeFeed(env, record, issue, state);
