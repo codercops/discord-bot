@@ -69,6 +69,27 @@ describe("welcomeNewMembers", () => {
     expect(env.STATE.store.has("welcomed:42")).toBe(true);
   });
 
+  it("retries a member on the next run if sending the welcome fails", async () => {
+    let failSend = true;
+    const fetched = mockFetch(undefined, (call) => {
+      const base = server([member("42", 1)])(call);
+      if (base) return base;
+      if (call.method === "POST" && call.url.includes("/channels/chan-welcome/messages") && failSend) {
+        return jsonResponse({ message: "Internal Server Error" }, 500);
+      }
+      return undefined;
+    });
+
+    await expect(welcomeNewMembers(env, cfg, now)).rejects.toThrow("Discord 500");
+    expect(env.STATE.store.has("welcomed:42")).toBe(false);
+
+    failSend = false;
+    fetched.clear();
+    expect(await welcomeNewMembers(env, cfg, new Date(now.getTime() + 60_000))).toBe(1);
+    expect(posts(fetched).map((c) => c.body.content)).toEqual(["Welcome, <@42>!"]);
+    expect(env.STATE.store.has("welcomed:42")).toBe(true);
+  });
+
   it("skips bots, people still on the rules screen and people who joined a while ago", async () => {
     const fetched = mockFetch(
       undefined,

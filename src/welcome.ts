@@ -52,13 +52,15 @@ export async function welcomeNewMembers(env: Env, cfg: Config, now: Date): Promi
 
   let sent = 0;
   for (const id of unseen) {
-    if (!greeted.has(id) && sent >= MAX_PER_RUN) break;
-    // Remember first: greeting someone twice is worse than a missed greeting.
-    await env.STATE.put(welcomedKey(id), now.toISOString(), { expirationTtl: REMEMBER_SECONDS });
-    if (greeted.has(id)) continue;
+    if (greeted.has(id)) {
+      await env.STATE.put(welcomedKey(id), now.toISOString(), { expirationTtl: REMEMBER_SECONDS });
+      continue;
+    }
+    if (sent >= MAX_PER_RUN) break;
     await sendMessage(env, cfg.welcomeChannel, welcomeMessage(id, cfg, { linking: linkingEnabled(env), issuesUrl: env.ISSUES_URL }), {
       ping: [id],
     });
+    await env.STATE.put(welcomedKey(id), now.toISOString(), { expirationTtl: REMEMBER_SECONDS });
     sent++;
   }
   return sent;
