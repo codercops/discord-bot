@@ -107,12 +107,30 @@ const resyncKey = (repo: string, number: number) => `resync:${repo}#${number}`;
 /** A channel takes about five messages per five seconds; the rest wait for the next run. */
 const RESYNC_PER_RUN = 5;
 
+// Serializes issue feed updates within this isolate so concurrent events don't create duplicate posts.
+const issueLocks = new Map<string, Promise<void>>();
+
+async function withIssueLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const previous = issueLocks.get(key);
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  issueLocks.set(key, current);
+  await previous;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (issueLocks.get(key) === current) issueLocks.delete(key);
+  }
+}
+
 /** Posts the issue's message, or edits the one already posted when it changed. */
 async function writeFeed(env: Env, record: FeedRecord | null, issue: StarterIssue, state: StarterState): Promise<string> {
   const message = starterIssueMessage(issue, state);
   const snapshot = starterIssueSnapshot(message);
   if (record?.message === snapshot) return "unchanged starter issue";
-  if (record) {
+  const prev = record;
+  if (record?.messageId) {
     try {
       await editMessage(env, env.CHANNEL_STARTER_ISSUES, record.messageId, message);
     } catch (err) {
@@ -123,9 +141,27 @@ async function writeFeed(env: Env, record: FeedRecord | null, issue: StarterIssu
       }
       record = null;
     }
+  } else if (record) {
+    return "unchanged starter issue";
   }
-  const messageId = record?.messageId ?? (await sendMessage(env, env.CHANNEL_STARTER_ISSUES, message));
-  await env.STATE.put(feedKey(issue.repo, issue.number), JSON.stringify({ messageId, state: state.kind, message: snapshot } satisfies FeedRecord));
+
+  const key = feedKey(issue.repo, issue.number);
+  let messageId = record?.messageId;
+  if (!messageId) {
+    const claim: FeedRecord = { messageId: "", state: state.kind, message: snapshot };
+    await env.STATE.put(key, JSON.stringify(claim), { expirationTtl: 60 });
+    try {
+      messageId = await sendMessage(env, env.CHANNEL_STARTER_ISSUES, message);
+    } catch (err) {
+      try {
+        if (prev) await env.STATE.put(key, JSON.stringify(prev));
+        else await env.STATE.delete(key);
+      } catch {}
+      throw err;
+    }
+  }
+
+  await env.STATE.put(key, JSON.stringify({ messageId, state: state.kind, message: snapshot } satisfies FeedRecord));
   return record ? `updated starter issue (${state.kind})` : "posted starter issue";
 }
 
@@ -138,42 +174,45 @@ const retryableGithub = (err: unknown) =>
 // claimed, released or closed, so the feed always shows what's really free.
 async function onIssue(e: IssuesEvent, env: Env, cfg: Config): Promise<string> {
   if (!ours(cfg, e.repository) || e.issue.pull_request) return "ignored issue";
-  const labels = (e.issue.labels ?? []).map((l) => l.name);
-  const issue: StarterIssue = {
-    repo: e.repository.name,
-    number: e.issue.number,
-    title: e.issue.title,
-    url: e.issue.html_url,
-    labels,
-  };
-  const record = await env.STATE.get<FeedRecord>(feedKey(issue.repo, issue.number), "json");
-  const state = starterState(e.issue, cfg, e.action);
+  const issueKey = feedKey(e.repository.name, e.issue.number);
+  return withIssueLock(issueKey, async () => {
+    const labels = (e.issue.labels ?? []).map((l) => l.name);
+    const issue: StarterIssue = {
+      repo: e.repository.name,
+      number: e.issue.number,
+      title: e.issue.title,
+      url: e.issue.html_url,
+      labels,
+    };
+    let record = await env.STATE.get<FeedRecord>(issueKey, "json");
+    const state = starterState(e.issue, cfg, e.action);
 
-  if (!record) {
-    // A new post needs a reason: a starter label was just added, or the issue
-    // became free again (unassigned, reopened or unblocked). "opened" is
-    // skipped on purpose, because GitHub also
-    // sends "labeled" for every label an issue is created with.
-    const starterLabelAdded =
-      e.action === "labeled" && cfg.starterLabels.includes((e.label?.name ?? "").toLowerCase());
-    const freedUp =
-      e.action === "unassigned" ||
-      e.action === "reopened" ||
-      (e.action === "unlabeled" && (e.label?.name ?? "").toLowerCase() === "blocked");
-    if (!starterLabelAdded && !freedUp) return "ignored issue";
-    // Only announce issues that are free to take right now.
-    if (state.kind !== "open" || !isStarterIssue(labels, cfg)) return "ignored issue";
-  }
+    if (!record) {
+      // A new post needs a reason: a starter label was just added, or the issue
+      // became free again (unassigned, reopened or unblocked). "opened" is
+      // skipped on purpose, because GitHub also
+      // sends "labeled" for every label an issue is created with.
+      const starterLabelAdded =
+        e.action === "labeled" && cfg.starterLabels.includes((e.label?.name ?? "").toLowerCase());
+      const freedUp =
+        e.action === "unassigned" ||
+        e.action === "reopened" ||
+        (e.action === "unlabeled" && (e.label?.name ?? "").toLowerCase() === "blocked");
+      if (!starterLabelAdded && !freedUp) return "ignored issue";
+      // Only announce issues that are free to take right now.
+      if (state.kind !== "open" || !isStarterIssue(labels, cfg)) return "ignored issue";
+    }
 
-  try {
-    return await writeFeed(env, record, issue, state);
-  } catch (err) {
-    // GitHub doesn't send a failed delivery again, so leave the update to the
-    // cron, which reads the issue from GitHub (see resyncStarterIssues).
-    if (!rateLimited(err)) throw err;
-    await env.STATE.put(resyncKey(issue.repo, issue.number), "1");
-    return "starter issue rate limited, resync queued";
-  }
+    try {
+      return await writeFeed(env, record, issue, state);
+    } catch (err) {
+      // GitHub doesn't send a failed delivery again, so leave the update to the
+      // cron, which reads the issue from GitHub (see resyncStarterIssues).
+      if (!rateLimited(err)) throw err;
+      await env.STATE.put(resyncKey(issue.repo, issue.number), "1");
+      return "starter issue rate limited, resync queued";
+    }
+  });
 }
 
 /** Brings the feed messages that Discord rate limited in line with their issues on GitHub. */
@@ -186,42 +225,45 @@ export async function resyncStarterIssues(env: Env, cfg: Config): Promise<void> 
     if (!repo || !number) continue;
     try {
       const num = Number(number);
-      const record = await env.STATE.get<FeedRecord>(feedKey(repo, num), "json");
-      let issue: StarterIssue;
-      let state: StarterState;
-      try {
-        const current = await getIssue(env, cfg, repo, num);
-        issue = { repo, number: current.number, title: current.title, url: current.html_url, labels: current.labels.map((l) => l.name) };
-        state = starterState(current, cfg);
-      } catch (err) {
-        if (err instanceof GithubError && err.status === 404) {
-          if (!record) continue;
-          state = { kind: "unavailable" };
-          let title = "";
-          let url = `https://github.com/${cfg.org}/${repo}/issues/${number}`;
-          let labels: string[] = [];
-          if (record.message) {
-            try {
-              const snap = JSON.parse(record.message);
-              if (typeof snap.url === "string") url = snap.url;
-              if (typeof snap.title === "string") {
-                const prefix = `${repo} #${number}: `;
-                title = snap.title.startsWith(prefix) ? snap.title.slice(prefix.length) : snap.title;
-              }
-              if (typeof snap.description === "string" && snap.description.includes("\n")) {
-                labels = snap.description.split("\n")[0].split(", ").map((l: string) => l.trim()).filter(Boolean);
-              }
-            } catch {}
+      const issueKey = feedKey(repo, num);
+      await withIssueLock(issueKey, async () => {
+        const record = await env.STATE.get<FeedRecord>(issueKey, "json");
+        let issue: StarterIssue;
+        let state: StarterState;
+        try {
+          const current = await getIssue(env, cfg, repo, num);
+          issue = { repo, number: current.number, title: current.title, url: current.html_url, labels: current.labels.map((l) => l.name) };
+          state = starterState(current, cfg);
+        } catch (err) {
+          if (err instanceof GithubError && err.status === 404) {
+            if (!record) return;
+            state = { kind: "unavailable" };
+            let title = "";
+            let url = `https://github.com/${cfg.org}/${repo}/issues/${number}`;
+            let labels: string[] = [];
+            if (record.message) {
+              try {
+                const snap = JSON.parse(record.message);
+                if (typeof snap.url === "string") url = snap.url;
+                if (typeof snap.title === "string") {
+                  const prefix = `${repo} #${number}: `;
+                  title = snap.title.startsWith(prefix) ? snap.title.slice(prefix.length) : snap.title;
+                }
+                if (typeof snap.description === "string" && snap.description.includes("\n")) {
+                  labels = snap.description.split("\n")[0].split(", ").map((l: string) => l.trim()).filter(Boolean);
+                }
+              } catch {}
+            }
+            issue = { repo, number: num, title, url, labels };
+          } else {
+            if (retryableGithub(err)) await env.STATE.put(name, "1");
+            throw err;
           }
-          issue = { repo, number: num, title, url, labels };
-        } else {
-          if (retryableGithub(err)) await env.STATE.put(name, "1");
-          throw err;
         }
-      }
-      // Like onIssue, only post issues that are free to take right now.
-      if (!record && state.kind !== "open") continue;
-      await writeFeed(env, record, issue, state);
+        // Like onIssue, only post issues that are free to take right now.
+        if (!record && state.kind !== "open") return;
+        await writeFeed(env, record, issue, state);
+      });
     } catch (err) {
       if (rateLimited(err)) {
         // The channel is still limited, so the rest wait as well.

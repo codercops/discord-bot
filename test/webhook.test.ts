@@ -79,6 +79,43 @@ describe("starter issue feed", () => {
     expect(fetched.discord().filter((c) => c.method === "POST")).toHaveLength(1);
   });
 
+  it("allows only one post when both starter labels arrive concurrently", async () => {
+    const fetched = mockFetch();
+    const put = vi.spyOn(env.STATE, "put");
+    const [first, second] = await Promise.all([
+      handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg),
+      handleGithubEvent("issues", issueEvent("labeled", {}, "help wanted"), env, cfg),
+    ]);
+
+    expect([first, second]).toContain("posted starter issue");
+    expect([first, second]).toContain("unchanged starter issue");
+    expect(fetched.discord().filter((c) => c.method === "POST")).toHaveLength(1);
+    expect(await env.STATE.get("issue:toolbelt#124", "json")).toMatchObject({ messageId: "msg-1", state: "open" });
+    expect(put).toHaveBeenCalledWith("issue:toolbelt#124", expect.any(String), { expirationTtl: 60 });
+  });
+
+  it("rolls back the claimed feed post when Discord rejects the initial post", async () => {
+    mockFetch(undefined, () => new Response("{}", { status: 500 }));
+    await expect(handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).rejects.toThrow("Discord 500");
+    expect(await env.STATE.get("issue:toolbelt#124")).toBeNull();
+  });
+
+  it("allows normal posting once a leftover claim expires", async () => {
+    const key = "issue:toolbelt#124";
+    await env.STATE.put(key, JSON.stringify({ messageId: "", state: "open" }));
+
+    const during = mockFetch();
+    expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("unchanged starter issue");
+    expect(during.discord()).toHaveLength(0);
+
+    await env.STATE.delete(key);
+
+    const after = mockFetch();
+    expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("posted starter issue");
+    expect(after.discord().filter((c) => c.method === "POST")).toHaveLength(1);
+    expect(await env.STATE.get(key, "json")).toMatchObject({ messageId: "msg-1", state: "open" });
+  });
+
   it("skips Discord edits and KV writes when only the issue body changes", async () => {
     const fetched = mockFetch();
     expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("posted starter issue");
