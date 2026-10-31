@@ -61,7 +61,7 @@ export function starterIssueMessage(issue: StarterIssue, state: StarterState): M
   const labels = issue.labels.join(", ");
   const status =
     state.kind === "open"
-      ? "Open. Comment on the issue to claim it (one issue at a time)."
+      ? "Open. Comment to ask to be assigned; the post updates once you're assigned (one issue at a time)."
       : state.kind === "claimed"
         ? `Claimed by ${escapeMarkdown(state.by)}.`
         : state.kind === "done"
@@ -223,7 +223,7 @@ export function starterIssuesReply(
     };
   });
   return {
-    content: "Comment on an issue on GitHub to claim it. One issue at a time, please.",
+    content: "Comment on an issue on GitHub to ask to be assigned. One issue at a time, please.",
     embeds,
   };
 }

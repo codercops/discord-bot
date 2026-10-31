@@ -2,12 +2,20 @@
 // funding.json format (https://fundingjson.org). Funders such as FLOSS/fund
 // read it from https://oss.codercops.com/funding.json.
 //
-// Every URL in it on another host has to point back here: each project site
-// and each repo carries a .well-known/funding-manifest-urls file that lists
-// MANIFEST_URL. Change a project's site or default branch and that file has to
-// move with it.
+// An identical copy lives at MIRROR_URL in codercops/.github, because
+// Cloudflare's bot protection turns some funders' servers away from
+// oss.codercops.com (FOSS United's fetcher gets a 403). Change this file and
+// that copy together: `npm run funding:json` prints it.
+//
+// Every URL in the manifest on another host has to point back to it: each
+// project site and each repo carries a .well-known/funding-manifest-urls file
+// that lists both MANIFEST_URLS. Change a project's site or default branch and
+// that file has to move with it.
 
 export const MANIFEST_URL = "https://oss.codercops.com/funding.json";
+export const MIRROR_URL = "https://raw.githubusercontent.com/codercops/.github/main/funding.json";
+export const MANIFEST_URLS = [MANIFEST_URL, MIRROR_URL];
+const WELL_KNOWN = "https://oss.codercops.com/.well-known/funding-manifest-urls";
 
 // GitHub Sponsors for the org is added here once the codercops listing is live.
 const SPONSORS_URL = "https://github.com/sponsors/anurag629";
@@ -42,7 +50,7 @@ export const manifest = {
     email: "hello@codercops.com",
     description:
       "CODERCOPS is a small software studio in India. We build and maintain four MIT-licensed developer tools: an embeddable AI chat widget, an OG image generator, a set of in-browser developer utilities, and the bot that runs our contributor community. All of them are free to use and self-host. We don't sell them or a hosted version of them. Close to 60 people have had pull requests merged across the four repos, many of them first-time open source contributors.",
-    webpageUrl: { url: "https://oss.codercops.com" },
+    webpageUrl: { url: "https://oss.codercops.com", wellKnown: WELL_KNOWN },
   },
   projects: [
     project(
@@ -78,8 +86,8 @@ export const manifest = {
         "develop",
         ["community", "discord", "github", "cloudflare-workers", "typescript"]
       ),
-      // Same host as this manifest, so the page needs no extra proof.
-      webpageUrl: { url: "https://oss.codercops.com" },
+      // Needed for the copy at MIRROR_URL, which is on another host.
+      webpageUrl: { url: "https://oss.codercops.com", wellKnown: WELL_KNOWN },
     },
   ],
   funding: {

@@ -118,7 +118,7 @@ What linking does:
 
 To switch it on:
 
-1. In the Developer Portal, under OAuth2, add `{PUBLIC_URL}/link/callback` to the redirects.
+1. In the Developer Portal, under OAuth2, add the redirect: register the configured `OAUTH_REDIRECT_URL`, or remove it to use `{PUBLIC_URL}/link/callback`.
 2. `npx wrangler secret put DISCORD_CLIENT_SECRET` with the client secret from the same page.
 3. Set `LINKING` to `"on"` in `wrangler.jsonc`, deploy, and run `npm run register` so `/link`, `/unlink` and `/me` appear. With `LINK_PREVIEW=1` in front, only server admins see them, which is handy for a first try.
 4. Give the bot Manage Roles and keep its own role above the tier roles.
@@ -148,7 +148,7 @@ Our copy runs from the `production` branch. Cloudflare Workers Builds deploys it
 
 ## Running your own copy
 
-1. Create a Discord application with a bot user and add it to your server with the `bot` and `applications.commands` scopes. It needs View Channels, Send Messages, Embed Links and Read Message History in the channels it posts to. The welcome posts and the roles are optional and need more: see the two sections above.
+1. Create a Discord application with a bot user and add it to your server with the `bot` and `applications.commands` scopes. It needs View Channels, Send Messages, Embed Links and Read Message History in the channels it posts to, plus Send Messages in Threads in the roadmap forums. The welcome posts and the roles are optional and need more: see the two sections above.
 2. Create a KV namespace with `npx wrangler kv namespace create STATE` and put its id in `wrangler.jsonc`.
 3. Fill in the `vars` in `wrangler.jsonc`: your application id and public key, the channel ids, your org and repos.
 4. Set the secrets:

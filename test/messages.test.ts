@@ -91,7 +91,7 @@ describe("starterIssueMessage", () => {
   const issue = { repo: "toolbelt", number: 124, title: "Quote YAML strings", url: "https://github.com/codercops/toolbelt/issues/124", labels: ["bug", "good first issue"] };
 
   it("describes each state", () => {
-    expect(starterIssueMessage(issue, { kind: "open" }).embeds?.[0]?.description).toContain("Comment on the issue to claim it");
+    expect(starterIssueMessage(issue, { kind: "open" }).embeds?.[0]?.description).toContain("Comment to ask to be assigned");
     expect(starterIssueMessage(issue, { kind: "claimed", by: "ada_l" }).embeds?.[0]?.description).toContain("Claimed by ada\\_l.");
     expect(starterIssueMessage(issue, { kind: "done" }).embeds?.[0]?.description).toContain("Done.");
   });
@@ -275,6 +275,7 @@ describe("starterIssuesReply", () => {
 
   it("shows one embed per repo with a link to the full filtered list", () => {
     const reply = starterIssuesReply(cfg, [{ repo: "toolbelt", issues: [issue(2), issue(1)] }, { repo: "ogcops", issues: [] }]);
+    expect(reply.content).toContain("Comment on an issue on GitHub to ask to be assigned");
     expect(reply.embeds).toHaveLength(2);
     expect(reply.embeds?.[0]?.title).toBe("toolbelt: 2 open starter issues");
     expect(reply.embeds?.[0]?.description).toContain("[#2](https://github.com/codercops/toolbelt/issues/2) Issue 2");

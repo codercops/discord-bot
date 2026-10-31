@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { manifest, MANIFEST_URL } from "../src/funding";
+import { manifest, MANIFEST_URL, MANIFEST_URLS, MIRROR_URL } from "../src/funding";
 import worker from "../src/index";
 import { makeEnv } from "./helpers";
 
@@ -29,14 +29,18 @@ describe("funding manifest", () => {
     }
   });
 
-  it("proves every URL on another host with a well-known file", () => {
-    const host = new URL(MANIFEST_URL).host;
-    for (const p of manifest.projects) {
-      for (const link of [p.webpageUrl, p.repositoryUrl] as { url: string; wellKnown?: string }[]) {
-        if (new URL(link.url).host === host) continue;
-        expect(link.wellKnown, `${link.url} needs a wellKnown URL`).toMatch(/\/\.well-known\/funding-manifest-urls$/);
-      }
+  it("proves every URL with a well-known file, so the GitHub copy verifies too", () => {
+    const links = [manifest.entity.webpageUrl, ...manifest.projects.flatMap((p) => [p.webpageUrl, p.repositoryUrl])] as {
+      url: string;
+      wellKnown?: string;
+    }[];
+    for (const link of links) {
+      expect(link.wellKnown, `${link.url} needs a wellKnown URL`).toMatch(/\/\.well-known\/funding-manifest-urls$/);
     }
+  });
+
+  it("keeps the mirror on another host than the main manifest", () => {
+    expect(new URL(MIRROR_URL).host).not.toBe(new URL(MANIFEST_URL).host);
   });
 
   it("only uses channels that exist in its plans", () => {
@@ -63,6 +67,6 @@ describe("funding routes", () => {
   it("lists the manifest in the well-known file", async () => {
     const res = await worker.fetch(new Request("https://oss.codercops.com/.well-known/funding-manifest-urls"), makeEnv(), ctx);
     expect(res.status).toBe(200);
-    expect((await res.text()).trim()).toBe(MANIFEST_URL);
+    expect((await res.text()).trim().split("\n")).toEqual(MANIFEST_URLS);
   });
 });

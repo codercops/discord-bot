@@ -79,6 +79,43 @@ describe("starter issue feed", () => {
     expect(fetched.discord().filter((c) => c.method === "POST")).toHaveLength(1);
   });
 
+  it("allows only one post when both starter labels arrive concurrently", async () => {
+    const fetched = mockFetch();
+    const put = vi.spyOn(env.STATE, "put");
+    const [first, second] = await Promise.all([
+      handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg),
+      handleGithubEvent("issues", issueEvent("labeled", {}, "help wanted"), env, cfg),
+    ]);
+
+    expect([first, second]).toContain("posted starter issue");
+    expect([first, second]).toContain("unchanged starter issue");
+    expect(fetched.discord().filter((c) => c.method === "POST")).toHaveLength(1);
+    expect(await env.STATE.get("issue:toolbelt#124", "json")).toMatchObject({ messageId: "msg-1", state: "open" });
+    expect(put).toHaveBeenCalledWith("issue:toolbelt#124", expect.any(String), { expirationTtl: 60 });
+  });
+
+  it("rolls back the claimed feed post when Discord rejects the initial post", async () => {
+    mockFetch(undefined, () => new Response("{}", { status: 500 }));
+    await expect(handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).rejects.toThrow("Discord 500");
+    expect(await env.STATE.get("issue:toolbelt#124")).toBeNull();
+  });
+
+  it("allows normal posting once a leftover claim expires", async () => {
+    const key = "issue:toolbelt#124";
+    await env.STATE.put(key, JSON.stringify({ messageId: "", state: "open" }));
+
+    const during = mockFetch();
+    expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("unchanged starter issue");
+    expect(during.discord()).toHaveLength(0);
+
+    await env.STATE.delete(key);
+
+    const after = mockFetch();
+    expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("posted starter issue");
+    expect(after.discord().filter((c) => c.method === "POST")).toHaveLength(1);
+    expect(await env.STATE.get(key, "json")).toMatchObject({ messageId: "msg-1", state: "open" });
+  });
+
   it("skips Discord edits and KV writes when only the issue body changes", async () => {
     const fetched = mockFetch();
     expect(await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).toBe("posted starter issue");
@@ -161,7 +198,7 @@ describe("starter issue feed", () => {
     const unblocked = issueEvent("unlabeled", {}, "Blocked");
     expect(await handleGithubEvent("issues", unblocked, env, cfg)).toBe("posted starter issue");
     expect(fetched.discord()).toHaveLength(1);
-    expect(fetched.discord()[0]?.body.embeds[0].description).toContain("Comment on the issue to claim it");
+    expect(fetched.discord()[0]?.body.embeds[0].description).toContain("Comment to ask to be assigned");
     expect(await handleGithubEvent("issues", unblocked, env, cfg)).toBe("unchanged starter issue");
     expect(fetched.discord().filter((c) => c.method === "POST")).toHaveLength(1);
   });
@@ -196,14 +233,14 @@ describe("starter issue feed", () => {
     const unavailableEdit = fetched.discord()[1];
     expect(unavailableEdit).toMatchObject({ method: "PATCH", url: "https://discord.com/api/v10/channels/chan-issues/messages/msg-1" });
     expect(unavailableEdit?.body.embeds[0].description).toContain("No longer available.");
-    expect(unavailableEdit?.body.embeds[0].description).not.toContain("Comment on the issue to claim it");
+    expect(unavailableEdit?.body.embeds[0].description).not.toContain("Comment to ask to be assigned");
     expect(unavailableEdit?.body.embeds[0].color).toBe(0xf85149);
 
     // Restore starter label
     const relabeled = issueEvent("labeled", { labels: [{ name: "bug" }, { name: "good first issue" }] }, "good first issue");
     expect(await handleGithubEvent("issues", relabeled, env, cfg)).toBe("updated starter issue (open)");
     const openEdit = fetched.discord()[2];
-    expect(openEdit?.body.embeds[0].description).toContain("Comment on the issue to claim it");
+    expect(openEdit?.body.embeds[0].description).toContain("Comment to ask to be assigned");
     expect(openEdit?.body.embeds[0].color).toBe(0x2ea043);
   });
 
@@ -222,7 +259,7 @@ describe("starter issue feed", () => {
     const unblocked = issueEvent("unlabeled", { labels: [{ name: "bug" }, { name: "good first issue" }] }, "blocked");
     expect(await handleGithubEvent("issues", unblocked, env, cfg)).toBe("updated starter issue (open)");
     const unblockedEdit = fetched.discord()[2];
-    expect(unblockedEdit?.body.embeds[0].description).toContain("Comment on the issue to claim it");
+    expect(unblockedEdit?.body.embeds[0].description).toContain("Comment to ask to be assigned");
     expect(unblockedEdit?.body.embeds[0].color).toBe(0x2ea043);
   });
 
@@ -871,6 +908,56 @@ describe("rate limited starter issue feed", () => {
     error.mockRestore();
   });
 
+  it("re-queues the resync when GitHub fails with a 500 error", async () => {
+    await env.STATE.put("resync:toolbelt#124", "1");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetched = mockFetch(() => new Response("Internal Server Error", { status: 500 }));
+    await resyncStarterIssues(env, cfg);
+    expect(fetched.discord()).toHaveLength(0);
+    expect(await env.STATE.get("resync:toolbelt#124")).toBe("1");
+    expect(error).toHaveBeenCalledWith("starter issue resync failed", "resync:toolbelt#124", expect.objectContaining({ status: 500 }));
+    error.mockRestore();
+  });
+
+  it("re-queues the resync when fetching the issue encounters a network error", async () => {
+    await env.STATE.put("resync:toolbelt#124", "1");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetched = mockFetch(() => {
+      throw new TypeError("fetch failed");
+    });
+    await resyncStarterIssues(env, cfg);
+    expect(fetched.discord()).toHaveLength(0);
+    expect(await env.STATE.get("resync:toolbelt#124")).toBe("1");
+    expect(error).toHaveBeenCalledWith("starter issue resync failed", "resync:toolbelt#124", expect.any(TypeError));
+    error.mockRestore();
+  });
+
+  it("re-queues the resync when GitHub rate limits with 403 or 429", async () => {
+    for (const status of [403, 429]) {
+      await env.STATE.put("resync:toolbelt#124", "1");
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const fetched = mockFetch(() => new Response("rate limited", { status }));
+      await resyncStarterIssues(env, cfg);
+      expect(fetched.discord()).toHaveLength(0);
+      expect(await env.STATE.get("resync:toolbelt#124")).toBe("1");
+      expect(error).toHaveBeenCalledWith("starter issue resync failed", "resync:toolbelt#124", expect.objectContaining({ status }));
+      error.mockRestore();
+    }
+  });
+
+  it("drops the resync when GitHub returns other 4xx errors", async () => {
+    for (const status of [400, 422]) {
+      await env.STATE.put("resync:toolbelt#124", "1");
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const fetched = mockFetch(() => new Response("bad request", { status }));
+      await resyncStarterIssues(env, cfg);
+      expect(fetched.discord()).toHaveLength(0);
+      expect(await env.STATE.get("resync:toolbelt#124")).toBeNull();
+      expect(error).toHaveBeenCalledWith("starter issue resync failed", "resync:toolbelt#124", expect.objectContaining({ status }));
+      error.mockRestore();
+    }
+  });
+
   it("lets other Discord errors fail the webhook as before", async () => {
     mockFetch(undefined, () => new Response("{}", { status: 500 }));
     await expect(handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).rejects.toThrow("Discord 500");
@@ -966,7 +1053,7 @@ describe("deleted starter issue message", () => {
     const post = fetched.discord()[1];
     expect(post?.method).toBe("POST");
     expect(post?.body.embeds[0].title).toContain("Updated title");
-    expect(post?.body.embeds[0].description).toContain("Comment on the issue to claim it");
+    expect(post?.body.embeds[0].description).toContain("Comment to ask to be assigned");
     expect(post?.body.allowed_mentions).toEqual({ parse: [] });
 
     expect(await handleGithubEvent("issues", edited, env, cfg)).toBe("unchanged starter issue");

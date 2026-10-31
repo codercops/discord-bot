@@ -35,8 +35,9 @@
     // #roadmaps, linked from the welcome post.
     "CHANNEL_ROADMAPS": "1558902089051148409",
     // "on" lets members link their GitHub account with /link. It also needs
-    // the DISCORD_CLIENT_SECRET secret and the redirect URL
-    // {PUBLIC_URL}/link/callback under OAuth2 > Redirects in the developer portal.
+    // the DISCORD_CLIENT_SECRET secret and the redirect URL (the configured
+    // OAUTH_REDIRECT_URL or {PUBLIC_URL}/link/callback) under OAuth2 > Redirects
+    // in the developer portal.
     "LINKING": "on",
     // Roles for linked members, by merged PRs in REPOS. The bot's own role has
     // to sit above these and needs Manage Roles.
