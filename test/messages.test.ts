@@ -10,6 +10,7 @@ import {
   starterIssuesReply,
   truncate,
   truncateReleaseNotes,
+  unlinkReply,
 } from "../src/messages";
 import { makeEnv, OCTOBER } from "./helpers";
 
@@ -300,5 +301,26 @@ describe("starterIssuesReply", () => {
     const embed = starterIssuesReply(cfg, [{ repo: "toolbelt", issues }]).embeds?.[0];
     expect(embed?.title).toBe("toolbelt: 30 open starter issues");
     expect(embed?.description).toContain("and 18 more");
+  });
+});
+
+describe("unlinkReply", () => {
+  it("confirms roles were taken back when removal succeeded", () => {
+    const reply = unlinkReply("Ada", true);
+    expect(reply.content).toBe(
+      "Unlinked from **Ada**. I deleted what I had stored and took back the contributor roles. Run `/link` if you change your mind."
+    );
+  });
+
+  it("notes that roles couldn't be removed and a moderator can take them off when removal failed", () => {
+    const reply = unlinkReply("Ada", false);
+    expect(reply.content).toBe(
+      "Unlinked from **Ada**. I deleted what I had stored, but the roles couldn't be removed and a moderator can take them off. Run `/link` if you change your mind."
+    );
+  });
+
+  it("escapes markdown in logins", () => {
+    const reply = unlinkReply("ada_lovelace", true);
+    expect(reply.content).toContain("**ada\\_lovelace**");
   });
 });

@@ -820,6 +820,57 @@ describe("rate limited starter issue feed", () => {
     expect(fetched.calls).toHaveLength(0);
   });
 
+  it("marks a deleted issue unavailable during resync when GitHub returns 404", async () => {
+    mockFetch();
+    await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg);
+    mockFetch(undefined, rateLimit);
+    expect(await handleGithubEvent("issues", issueEvent("deleted"), env, cfg)).toBe(
+      "starter issue rate limited, resync queued"
+    );
+
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetched = mockFetch(() => new Response("Not Found", { status: 404 }));
+    await resyncStarterIssues(env, cfg);
+    expect(fetched.discord()).toHaveLength(1);
+    expect(fetched.discord()[0]?.method).toBe("PATCH");
+    expect(fetched.discord()[0]?.url).toContain("/messages/msg-1");
+    expect(fetched.discord()[0]?.body.embeds[0].description).toContain("No longer available.");
+    expect(fetched.discord()[0]?.body.embeds[0].color).toBe(0xf85149);
+    expect(await env.STATE.get("issue:toolbelt#124", "json")).toMatchObject({ messageId: "msg-1", state: "unavailable" });
+    expect(await env.STATE.get("resync:toolbelt#124")).toBeNull();
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("re-queues the resync when marking a 404 issue unavailable is rate limited by Discord", async () => {
+    mockFetch();
+    await handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg);
+    mockFetch(undefined, rateLimit);
+    expect(await handleGithubEvent("issues", issueEvent("deleted"), env, cfg)).toBe(
+      "starter issue rate limited, resync queued"
+    );
+
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetched = mockFetch(() => new Response("Not Found", { status: 404 }), rateLimit);
+    await resyncStarterIssues(env, cfg);
+    expect(fetched.discord()).toHaveLength(1);
+    expect(await env.STATE.get("resync:toolbelt#124")).toBe("1");
+    expect(await env.STATE.get("issue:toolbelt#124", "json")).toMatchObject({ messageId: "msg-1", state: "open" });
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("drops the resync without calling Discord when GitHub returns 404 and there is no feed record", async () => {
+    await env.STATE.put("resync:toolbelt#124", "1");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetched = mockFetch(() => new Response("Not Found", { status: 404 }));
+    await resyncStarterIssues(env, cfg);
+    expect(fetched.discord()).toHaveLength(0);
+    expect(await env.STATE.get("resync:toolbelt#124")).toBeNull();
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
   it("lets other Discord errors fail the webhook as before", async () => {
     mockFetch(undefined, () => new Response("{}", { status: 500 }));
     await expect(handleGithubEvent("issues", issueEvent("labeled", {}, "good first issue"), env, cfg)).rejects.toThrow("Discord 500");

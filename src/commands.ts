@@ -6,7 +6,7 @@ import type { MessagePayload } from "./discord";
 import { countMergedPrs, getLoginById, GithubError, listStarterIssues } from "./github";
 import { getLeaderboard } from "./leaderboard";
 import { getLink, linkedMembers, removeLink, saveLink } from "./links";
-import { checkinReply, helpReply, leaderboardMessage, linkPrompt, meReply, starterIssuesReply, streaksMessage } from "./messages";
+import { checkinReply, helpReply, leaderboardMessage, linkPrompt, meReply, starterIssuesReply, streaksMessage, unlinkReply } from "./messages";
 import { authorizeUrl, linkingEnabled, signState } from "./oauth";
 import { grantEarnedRoles, isMaintainer, removeTierRoles } from "./roles";
 import { currentProgram, findProgram, leaderboardUrl, programStatus } from "./programs";
@@ -101,10 +101,14 @@ export async function runCommand(
         const removed = await removeLink(env, user.id);
         if (!removed) return { content: "You have no linked GitHub account, so there's nothing to remove." };
         // The link is gone either way; a role that couldn't be removed isn't worth an error.
-        await removeTierRoles(env, cfg, user.id).catch((err) => console.error("removing roles failed", err));
-        return {
-          content: `Unlinked from **${removed.githubLogin}**. I deleted what I had stored and took back the contributor roles. Run \`/link\` if you change your mind.`,
-        };
+        let rolesRemoved = true;
+        try {
+          await removeTierRoles(env, cfg, user.id);
+        } catch (err) {
+          console.error("removing roles failed", err);
+          rolesRemoved = false;
+        }
+        return unlinkReply(removed.githubLogin, rolesRemoved);
       }
       case "me": {
         if (!user) return IN_SERVER_ONLY;

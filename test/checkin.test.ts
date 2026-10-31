@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { applyCheckin, currentStreak, daysBetween, localDate, rankStreaks, type CheckinRecord } from "../src/checkin";
+import { applyCheckin, currentStreak, daysBetween, localDate, rankStreaks, recordCheckin, type CheckinRecord } from "../src/checkin";
 import { runCommand } from "../src/commands";
 import { DAILY_CRON, getConfig } from "../src/config";
 import worker from "../src/index";
@@ -162,6 +162,31 @@ describe("/checkin", () => {
     const reply = await checkin([{ name: "roadmap", value: ai.id }], "2026-10-11T18:00:00Z");
     expect(reply.content).toContain("You already checked in today (day 1)");
     expect(fetched.discord()).toHaveLength(0);
+  });
+
+  it("allows only one of two concurrent check-ins for the same day to post", async () => {
+    const fetched = mockFetch();
+    const options = [{ name: "roadmap", value: ai.id }];
+    const [first, second] = await Promise.all([
+      checkin(options, "2026-10-11T08:00:00Z"),
+      checkin(options, "2026-10-11T08:00:00Z"),
+    ]);
+
+    expect([first.content, second.content].filter((content) => (content ?? "").includes("Checked in:")).length).toBe(1);
+    expect([first.content, second.content].filter((content) => (content ?? "").includes("already checked in today")).length).toBe(1);
+    expect(fetched.discord()).toHaveLength(2); // one thread and one check-in post
+    const saved = await env.STATE.get<CheckinRecord>(`checkin:${ai.id}:u1`, "json");
+    expect(saved).toMatchObject({ day: 1, checkins: 1, lastDate: "2026-10-11", threadId: "msg-1" });
+  });
+
+  it("rolls back the claimed check-in when Discord rejects the post", async () => {
+    const options = { userId: user.id, name: user.name, roadmapId: ai.id, now: new Date("2026-10-11T08:00:00Z") };
+    mockFetch(undefined, (call) => call.url.endsWith("/channels/forum-ai/threads")
+      ? new Response("{}", { status: 500 })
+      : undefined);
+
+    await expect(recordCheckin(env, cfg, options)).rejects.toThrow("Discord 500");
+    expect(await env.STATE.get(`checkin:${ai.id}:u1`)).toBeNull();
   });
 
   it("opens a new thread when the old one was deleted", async () => {

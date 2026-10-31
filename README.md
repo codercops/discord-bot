@@ -24,6 +24,7 @@ It runs on Cloudflare Workers. There is no server to keep alive and no Discord g
 | `POST /github` | GitHub webhooks (`release`, `issues`, `pull_request`) | The HMAC signature is checked, then the event becomes a new or edited Discord message. |
 | `GET /leaderboard/{id}`, `GET /leaderboard/{id}.json` | Anyone | One program's ranking as a page or as JSON. `/leaderboard` shows the current program. No scripts, no cookies, cached for five minutes. |
 | `GET /leaderboard/{id}/u/{login}`, and the same with `.png` | Anyone | One contributor's page in a program, and their share card as a 1200x630 image. |
+| `GET /funding.json`, `GET /.well-known/funding-manifest-urls` | Anyone | Our [funding.json](https://fundingjson.org) manifest, which funders like FLOSS/fund read, and the file that proves we publish it. The manifest lives in `src/funding.ts`. |
 | `GET /link/callback` | Discord, after a member approves `/link` | Reads the member's verified GitHub connection, stores the link and hands out any role they've earned. |
 | cron | Cloudflare, every minute | Looks for members who just joined and welcomes them. |
 | cron | Cloudflare, every day at 04:30 UTC | On Mondays, posts the leaderboard of each running program and the learning streaks. On any day, posts the final results of a program that has just ended. |
@@ -46,7 +47,7 @@ The code is split so the logic is easy to test:
 
 ## Contributor programs
 
-A program is a stretch of time in which merged pull requests are counted and the top contributors get something for it. CODERCOPS October 2026 is the first one. Each program is one entry in `PROGRAMS` in `wrangler.jsonc`:
+A program is a stretch of time in which merged pull requests are counted and the top contributors get something for it. CODERCOPS October 2026 was the first one. From November 2026 there's one a month, counting PRs labeled `codercops-accepted`, which the `accepted-label` workflow in each repo adds at merge time. Each program is one entry in `PROGRAMS` in `wrangler.jsonc`:
 
 ```jsonc
 {
@@ -164,6 +165,10 @@ Our copy runs from the `production` branch. Cloudflare Workers Builds deploys it
 ## Contributing
 
 Issues and pull requests are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## Maintainers and funding
+
+The bot is maintained by CODERCOPS together with contributors who have Triage access. [GOVERNANCE.md](https://github.com/codercops/.github/blob/main/GOVERNANCE.md) lists who they are and how to become one. The project is free and MIT licensed, and CODERCOPS doesn't sell it or a hosted version of it. If it's useful to you, you can [sponsor the maintainers](https://github.com/sponsors/anurag629). The money pays for review time and hosting.
 
 ## License
 
