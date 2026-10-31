@@ -149,7 +149,7 @@ async function writeFeed(env: Env, record: FeedRecord | null, issue: StarterIssu
   let messageId = record?.messageId;
   if (!messageId) {
     const claim: FeedRecord = { messageId: "", state: state.kind, message: snapshot };
-    await env.STATE.put(key, JSON.stringify(claim));
+    await env.STATE.put(key, JSON.stringify(claim), { expirationTtl: 60 });
     try {
       messageId = await sendMessage(env, env.CHANNEL_STARTER_ISSUES, message);
     } catch (err) {
