@@ -118,7 +118,7 @@ What linking does:
 
 To switch it on:
 
-1. In the Developer Portal, under OAuth2, add `{PUBLIC_URL}/link/callback` to the redirects.
+1. In the Developer Portal, under OAuth2, add the redirect: register the configured `OAUTH_REDIRECT_URL`, or remove it to use `{PUBLIC_URL}/link/callback`.
 2. `npx wrangler secret put DISCORD_CLIENT_SECRET` with the client secret from the same page.
 3. Set `LINKING` to `"on"` in `wrangler.jsonc`, deploy, and run `npm run register` so `/link`, `/unlink` and `/me` appear. With `LINK_PREVIEW=1` in front, only server admins see them, which is handy for a first try.
 4. Give the bot Manage Roles and keep its own role above the tier roles.
