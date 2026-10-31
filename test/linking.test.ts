@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { runCommand } from "../src/commands";
 import { getConfig } from "../src/config";
 import worker from "../src/index";
-import { getLink, getLinkByGithub, linkedMembers, removeLink, saveLink } from "../src/links";
+import { getLink, getLinkByGithub, getLinkByGithubId, linkedMembers, removeLink, saveLink } from "../src/links";
 import { leaderboardMessage, mergedPrMessage } from "../src/messages";
 import { authorizeUrl, readState, signState } from "../src/oauth";
 import { handleGithubEvent } from "../src/webhook";
@@ -100,6 +100,7 @@ describe("stored links", () => {
     await saveLink(env, ada);
     expect(await getLink(env, "42")).toEqual(ada);
     expect((await getLinkByGithub(env, "ADA"))?.discordId).toBe("42");
+    expect(await getLinkByGithubId(env, "9001")).toEqual(ada);
     expect(await linkedMembers(env, ["ada", "bob"])).toEqual(new Map([["ada", "42"]]));
   });
 
@@ -652,6 +653,46 @@ describe("linked members in posts", () => {
     const post = fetched.calls.find((c) => c.url.endsWith("/channels/chan-merged/messages"));
     expect(post?.body.embeds[0].description).toContain("**Ada** (<@42>) got a PR merged");
     expect(post?.body.embeds[0].description).not.toContain("earns them");
+  });
+
+  it("recognizes a renamed GitHub user by numeric id, grants roles, and updates stored login", async () => {
+    const env = makeEnv();
+    await saveLink(env, ada);
+    const renamedEvent = {
+      ...prEvent,
+      pull_request: {
+        ...prEvent.pull_request,
+        user: { login: "Ada-new", type: "User", id: 9001 },
+      },
+    };
+    const fetched = mockFetch(search(0), discordApi({ memberRoles: [] }));
+    expect(await handleGithubEvent("pull_request", renamedEvent, env, getConfig(env))).toBe("posted merged pull request");
+    const post = fetched.calls.find((c) => c.url.endsWith("/channels/chan-merged/messages"));
+    expect(post?.body.embeds[0].description).toBe(
+      "**Ada-new** (<@42>) got a PR merged in **toolbelt**: [Fix a thing](https://github.com/codercops/toolbelt/pull/9)\nThat's their 1st merged PR on the Hacktoberfest 2026 leaderboard.\nThat earns them the **Contributor** role."
+    );
+    expect(fetched.calls.some((c) => c.method === "PUT" && c.url.endsWith("/members/42/roles/role-contributor"))).toBe(true);
+    expect(await getLink(env, "42")).toEqual({ ...ada, githubLogin: "Ada-new" });
+    expect(await getLinkByGithub(env, "Ada")).toBeNull();
+    expect(await getLinkByGithub(env, "Ada-new")).toEqual({ ...ada, githubLogin: "Ada-new" });
+    expect(await getLinkByGithubId(env, "9001")).toEqual({ ...ada, githubLogin: "Ada-new" });
+  });
+
+  it("populates numeric id index on merge for legacy links without it", async () => {
+    const env = makeEnv();
+    await saveLink(env, ada);
+    await env.STATE.delete("link:github-id:9001");
+    expect(await getLinkByGithubId(env, "9001")).toBeNull();
+    const eventWithId = {
+      ...prEvent,
+      pull_request: {
+        ...prEvent.pull_request,
+        user: { login: "Ada", type: "User", id: 9001 },
+      },
+    };
+    mockFetch(search(0), discordApi({ memberRoles: [] }));
+    await handleGithubEvent("pull_request", eventWithId, env, getConfig(env));
+    expect(await getLinkByGithubId(env, "9001")).toEqual(ada);
   });
 
   it("leaves people who haven't linked exactly as before", () => {

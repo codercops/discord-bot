@@ -3,7 +3,7 @@ import type { Config, Env, Program } from "./config";
 import { DiscordError, editMessage, sendMessage } from "./discord";
 import { countMergedPrs, getIssue, type GithubIssue, type StarterIssue } from "./github";
 import { cacheLeaderboard, invalidateLeaderboard, recentMerges, rememberMerges, searchCountedPrs } from "./leaderboard";
-import { getLinkByGithub } from "./links";
+import { getLinkByGithub, getLinkByGithubId, saveLink } from "./links";
 import { linkingEnabled } from "./oauth";
 import { grantEarnedRoles } from "./roles";
 import { mergedPrMessage, releaseMessage, starterIssueMessage, type StarterState } from "./messages";
@@ -38,7 +38,7 @@ interface PullRequestEvent {
     html_url: string;
     merged: boolean;
     merged_at: string | null;
-    user: { login: string; type: string };
+    user: { login: string; type: string; id?: number | string };
     labels: { name: string }[];
   };
 }
@@ -286,7 +286,19 @@ async function onPullRequest(e: PullRequestEvent, env: Env, cfg: Config): Promis
 
   // If the author linked their GitHub account, show who they are here and
   // hand out any role this merge earned. The shoutout goes out either way.
-  const link = await getLinkByGithub(env, pr.user.login);
+  let link = pr.user.id !== undefined ? await getLinkByGithubId(env, String(pr.user.id)) : null;
+  if (!link) {
+    const byLogin = await getLinkByGithub(env, pr.user.login);
+    if (byLogin && (pr.user.id === undefined || byLogin.githubId === String(pr.user.id))) {
+      link = byLogin;
+      if (pr.user.id !== undefined) {
+        await saveLink(env, link);
+      }
+    }
+  } else if (link.githubLogin !== pr.user.login) {
+    link = { ...link, githubLogin: pr.user.login };
+    await saveLink(env, link);
+  }
   let newRoles: string[] = [];
   if (link) {
     try {
