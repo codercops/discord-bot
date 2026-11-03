@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { getConfig } from "../src/config";
 import worker from "../src/index";
 import { rankContributors, type MergedPr } from "../src/leaderboard";
@@ -470,6 +470,12 @@ describe("GET /leaderboard", () => {
   });
 
   it("names qualifying unlinked members when linking is enabled", async () => {
+    // The page only lists unlinked qualifiers while the program runs, so keep the clock inside October.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(during);
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     env = makeEnv({ LINKING: "on", DISCORD_CLIENT_SECRET: "secret" });
     mockFetch(() => ({
       total_count: 11,
