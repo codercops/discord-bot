@@ -450,7 +450,12 @@ async function dailyPosts(env: Env, cfg: Config, now: Date): Promise<void> {
         const posted = `final:${program.id}`;
         if (await env.STATE.get(posted)) return;
         const board = await getLeaderboard(env, cfg, program, { fresh: true, fallback: false });
-        const members = await linkedMembers(env, board.rows.slice(0, 10).map((r) => r.login));
+        // Resolve linked accounts for every winner (who can be ranked below the
+        // displayed rows when topN is large) plus the rows shown in the embed, so
+        // nobody who linked is called unlinked. The weekly post stays top-10.
+        const shown = board.rows.slice(0, 10);
+        const linkedLogins = new Set([...shown, ...board.rows.filter((r) => r.winner)].map((r) => r.login));
+        const members = await linkedMembers(env, [...linkedLogins]);
         await sendMessage(
           env,
           env.CHANNEL_LEADERBOARD,

@@ -248,6 +248,26 @@ describe("leaderboardMessage", () => {
     expect(leaderboardMessage(winners, program, { linking: true, members: new Map() }).embeds?.[0]?.description).not.toContain("/link");
   });
 
+  it("mentions a linked winner ranked beyond the displayed rows and skips them in the unlinked callout", () => {
+    // A program whose topN reaches below the 10 rows shown in the embed.
+    const wide = { ...program, topN: 12 };
+    const rows = [
+      ...Array.from({ length: 10 }, (_, i) => row(`u${i + 1}`, 6, true, true)),
+      row("eleven", 5, true, true), // winner at rank 11, below the displayed rows
+    ];
+    const members = new Map([["eleven", "99"]]);
+    const desc = leaderboardMessage({ ...board, rows }, wide, { final: true, linking: true, members }).embeds?.[0]?.description;
+    // The congratulations line mentions the linked winner by Discord id.
+    expect(desc).toContain("(<@99>)");
+    // The linked winner is not told to run /link.
+    const unlinked = desc?.match(/: run `\/link`[^]*$/)?.[0] ?? "";
+    expect(unlinked).not.toContain("eleven");
+    // Without the link the same winner appears in the unlinked callout.
+    const noLink = leaderboardMessage({ ...board, rows }, wide, { final: true, linking: true, members: new Map() }).embeds?.[0]?.description;
+    expect(noLink).toContain("**eleven**");
+    expect(noLink).toContain("/link");
+  });
+
   it("adds the final note to the final results only", () => {
     const finalNote = "Add it to your profile.";
     expect(leaderboardMessage(board, program, { final: true, finalNote }).embeds?.[0]?.description?.endsWith("\n\nAdd it to your profile.")).toBe(true);
