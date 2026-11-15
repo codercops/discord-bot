@@ -18,6 +18,18 @@ describe("wrangler.jsonc configuration", () => {
     expect(decodeURIComponent(config.vars?.ISSUES_URL ?? "")).toContain("-label:blocked");
   });
 
+  // The link once searched for a Hacktoberfest label that no open issue had
+  // after October, so it showed nothing.
+  it("searches ISSUES_URL for open, unclaimed issues with the starter labels", () => {
+    const query = new URL(config.vars?.ISSUES_URL ?? "").searchParams.get("q") ?? "";
+    expect(query).toContain("is:issue");
+    expect(query).toContain("is:open");
+    expect(query).toContain("no:assignee");
+    for (const label of (config.vars?.STARTER_LABELS ?? "").split(",")) {
+      expect(query).toContain(`"${label.trim()}"`);
+    }
+  });
+
   describe("PROGRAMS", () => {
     it("has unique IDs for every program", () => {
       const ids = cfg.programs.map((p) => p.id);
