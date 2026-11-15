@@ -240,7 +240,9 @@
     "OAUTH_REDIRECT_URL": "https://codercops-discord-bot.copscoder.workers.dev/link/callback",
     // Links on the public leaderboard pages.
     "DISCORD_INVITE": "https://discord.gg/mpGdJyjaRQ",
-    "ISSUES_URL": "https://github.com/search?q=org%3Acodercops+label%3Ahacktoberfest+state%3Aopen+no%3Aassignee+-label%3Ablocked&type=issues",
+    // "Find an issue" on the public pages and in the welcome post: open,
+    // unclaimed issues with one of the STARTER_LABELS. Keep the two in sync.
+    "ISSUES_URL": "https://github.com/search?q=org%3Acodercops+is%3Aissue+is%3Aopen+no%3Aassignee+label%3A%22good+first+issue%22%2C%22help+wanted%22+-label%3Ablocked&type=issues",
     // Learning roadmaps for /checkin. `forum` is the forum channel that holds
     // the log threads, `tag` the forum tag put on new threads.
     "ROADMAPS": [
