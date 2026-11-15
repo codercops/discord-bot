@@ -176,7 +176,7 @@ export function leaderboardMessage(
     if (opts.final) {
       description +=
         winners.length > 0
-          ? `\n\nCongratulations to ${winners.map((w) => who(w.login)).join(", ")}. We'll DM you on Discord with a private form for the shipping details, so we can send you ${reward}.`
+          ? `\n\nCongratulations to ${winners.map((w) => who(w.login)).join(", ")}. We'll DM you on Discord about ${reward}.`
           : `\n\nNobody reached ${minPrs} merged PRs this time. Thank you to everyone who contributed.`;
       // A DM needs a Discord account, and we only know it for winners who linked.
       const unlinked = opts.linking ? winners.filter((w) => !opts.members?.has(w.login.toLowerCase())) : [];
