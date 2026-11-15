@@ -95,6 +95,8 @@ export interface Env {
   PROGRAMS: ProgramInput[] | string;
   /** Optional line added to a program's final results post. */
   FINAL_RESULTS_NOTE?: string;
+  /** GitHub accounts whose sponsors are listed at /sponsors, comma separated. Defaults to GITHUB_ORG. */
+  SPONSOR_ACCOUNTS?: string;
   /** Where the public pages live, without a trailing slash. Used for links in Discord messages. */
   PUBLIC_URL: string;
   /**
@@ -129,6 +131,8 @@ export interface Config {
   /** Oldest first. */
   programs: Program[];
   finalResultsNote: string;
+  /** The accounts whose sponsors appear at /sponsors. */
+  sponsorAccounts: string[];
   publicUrl: string;
   oauthRedirectUrl: string;
   roadmaps: Roadmap[];
@@ -182,6 +186,7 @@ export function getConfig(env: Env): Config {
     roleTiers: array(env.ROLE_TIERS).sort((a, b) => a.minPrs - b.minPrs),
     programs,
     finalResultsNote: (env.FINAL_RESULTS_NOTE ?? "").trim(),
+    sponsorAccounts: list(env.SPONSOR_ACCOUNTS).length ? list(env.SPONSOR_ACCOUNTS) : list(env.GITHUB_ORG),
     publicUrl,
     oauthRedirectUrl: env.OAUTH_REDIRECT_URL?.trim() || `${publicUrl}/link/callback`,
     roadmaps: array(env.ROADMAPS),

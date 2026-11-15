@@ -129,10 +129,11 @@ function parseBody(body: unknown): unknown {
 
 /**
  * Replaces global fetch. Discord calls are recorded and answered with a fake
- * message id; GitHub calls are answered by `github(url)`.
+ * message id; GitHub calls are answered by `github(url, body)`, where `body` is
+ * the parsed request body (GraphQL calls send their query and variables there).
  */
 export function mockFetch(
-  github: (url: URL) => unknown = () => ({ total_count: 0, items: [] }),
+  github: (url: URL, body?: any) => unknown = () => ({ total_count: 0, items: [] }),
   /** Return a Response to override the default Discord answer for a call. */
   discord: (call: RecordedCall) => Response | undefined = () => undefined
 ) {
@@ -147,7 +148,7 @@ export function mockFetch(
     const userAgent = headers.get("User-Agent") ?? undefined;
     calls.push({ url: url.href, method, body, auth, userAgent });
     if (url.hostname === "api.github.com") {
-      const response = github(url);
+      const response = github(url, body);
       return response instanceof Response ? response : new Response(JSON.stringify(response), { status: 200 });
     }
     const override = discord({ url: url.href, method, body, auth });

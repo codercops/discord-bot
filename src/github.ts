@@ -43,6 +43,29 @@ async function gh<T>(env: Env, path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * A GraphQL query. Unlike the REST calls it needs GITHUB_TOKEN, because
+ * GitHub's GraphQL API takes no anonymous requests.
+ */
+export async function graphql<T>(env: Env, query: string, variables: Record<string, unknown>): Promise<T> {
+  if (!env.GITHUB_TOKEN) throw new GithubError(401, "GitHub's GraphQL API needs GITHUB_TOKEN");
+  const res = await fetch("https://api.github.com/graphql", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+      "Content-Type": "application/json",
+      "User-Agent": "codercops-discord-bot",
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!res.ok) throw new GithubError(res.status, `GitHub ${res.status} for GraphQL`);
+  const body = (await res.json()) as { data?: T; errors?: { message: string }[] };
+  if (body.errors?.length || !body.data) {
+    throw new GithubError(502, `GitHub GraphQL error: ${body.errors?.map((e) => e.message).join("; ") ?? "no data"}`);
+  }
+  return body.data;
+}
+
 /** Resolves a linked account's current login using the id that survives renames. */
 export async function getLoginById(env: Env, githubId: string): Promise<string | null> {
   if (!/^[1-9]\d*$/.test(githubId)) return null;

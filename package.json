@@ -1,6 +1,6 @@
 {
   "name": "codercops-discord-bot",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "description": "The CODERCOPS community bot: posts releases, starter issues and merged PRs from our open source repos into Discord.",
   "license": "MIT",
@@ -23,5 +23,8 @@
   },
   "dependencies": {
     "@resvg/resvg-wasm": "^2.6.2"
+  },
+  "overrides": {
+    "undici@7": "^7.30.1"
   }
 }

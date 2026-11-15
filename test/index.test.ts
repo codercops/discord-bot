@@ -292,6 +292,39 @@ describe("scheduled leaderboard", () => {
     expect(fetched.discord()).toHaveLength(1);
   });
 
+  it("resolves linked accounts for winners ranked beyond the displayed rows in final results", async () => {
+    // A program whose topN reaches below the 10 rows shown in the embed.
+    env = makeEnv({ PROGRAMS: [{ ...OCTOBER, topN: 12 }], LINKING: "on", DISCORD_CLIENT_SECRET: "secret" });
+    // Eleven contributors, each with the minimum 5 merged PRs, so all are winners.
+    // u11's PRs are dated later than everyone else's so it is the last to reach
+    // five qualifying PRs and ranks 11th — outside the 10 rows shown in the embed.
+    const items = Array.from({ length: 11 }, (_, i) => ({
+      html_url: `https://github.com/codercops/toolbelt/pull/${i + 1}`,
+      number: i + 1,
+      title: "Fix a thing",
+      repository_url: "https://api.github.com/repos/codercops/toolbelt",
+      user: { login: `u${i + 1}` },
+      pull_request: { merged_at: `2026-10-${i === 10 ? "10" : `0${(i % 9) + 1}`}T00:00:00Z` },
+    }));
+    // Five PRs per contributor (55 total) so each qualifies at minPrs=5.
+    const allItems = Array.from({ length: 5 }, (_, batch) =>
+      items.map((it, i) => ({ ...it, number: batch * 11 + i + 1, html_url: `https://github.com/codercops/toolbelt/pull/${batch * 11 + i + 1}` }))
+    ).flat();
+    const fetched = mockFetch(() => ({ total_count: allItems.length, items: allItems }));
+    // The 11th contributor linked their GitHub account.
+    await env.STATE.put(
+      "link:github:u11",
+      JSON.stringify({ discordId: "99", githubLogin: "u11", githubId: "1100", linkedAt: "2026-10-01T00:00:00Z" })
+    );
+
+    await run("2026-11-01T04:30:00Z");
+    const desc = fetched.discord()[0]?.body.embeds[0].description;
+    // The linked winner ranked 11th is mentioned by Discord id in the congratulations line.
+    expect(desc).toContain("**u11** (<@99>)");
+    // They are not told to run /link.
+    expect(desc).not.toContain("**u11**: run `/link`");
+  });
+
   it("doesn't announce a program that ended long before it was added", async () => {
     const fetched = mockFetch();
     await run("2026-11-20T04:30:00Z");

@@ -2,7 +2,8 @@ import { listCheckins, localDate, rankStreaks } from "./checkin";
 import { runCommand, type CommandData, type CommandUser } from "./commands";
 import { DAILY_CRON, getConfig, WELCOME_CRON, type Config, type Env } from "./config";
 import { editInteractionReply, sendMessage } from "./discord";
-import { manifest as fundingManifest, MANIFEST_URLS as FUNDING_MANIFEST_URLS } from "./funding";
+import { manifest as fundingManifest, MANIFEST_URLS as FUNDING_MANIFEST_URLS, SPONSORS_URL } from "./funding";
+import { getSponsors, refreshSponsors } from "./sponsors";
 import { getLeaderboard } from "./leaderboard";
 import { GithubError, mergedPrQuery } from "./github";
 import { linkedMembers } from "./links";
@@ -10,7 +11,7 @@ import { completeLink } from "./linking";
 import { leaderboardMessage, LINK_BUTTON_ID, streaksMessage } from "./messages";
 import { linkingEnabled } from "./oauth";
 import { BOARD_ROWS, boardSvg, boardVersion, cardSvg } from "./card";
-import { contributorPage, FAVICON_SVG, leaderboardJson, leaderboardPage, noticePage, standing } from "./page";
+import { contributorPage, FAVICON_SVG, leaderboardJson, leaderboardPage, noticePage, sponsorsJson, sponsorsPage, standing } from "./page";
 import { currentProgram, findProgram, LEADERBOARD_IMAGE_PATH, LEADERBOARD_PATH, leaderboardUrl, programStatus } from "./programs";
 import { verifyDiscordRequest, verifyGithubSignature } from "./verify";
 import { handleGithubEvent, resyncStarterIssues } from "./webhook";
@@ -30,6 +31,8 @@ const EPHEMERAL = 64;
 
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+const GOVERNANCE_URL = "https://github.com/codercops/.github/blob/main/GOVERNANCE.md";
 
 interface DiscordUser {
   id: string;
@@ -215,6 +218,39 @@ async function handleLeaderboardImage(request: Request, env: Env, ctx: Execution
   return response;
 }
 
+// Everyone who sponsors the projects on GitHub: /sponsors and /sponsors.json.
+async function handleSponsors(request: Request, env: Env, asJson: boolean): Promise<Response> {
+  const links = {
+    self: new URL("/sponsors", request.url).href,
+    sponsor: SPONSORS_URL,
+    governance: GOVERNANCE_URL,
+  };
+  let list;
+  try {
+    list = await getSponsors(env, getConfig(env));
+  } catch (err) {
+    console.error("sponsors page failed", err);
+    return new Response("The sponsors list is unavailable right now.", {
+      status: 503,
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Retry-After": "60", ...(asJson ? { "Access-Control-Allow-Origin": "*" } : {}) },
+    });
+  }
+  const cache = "public, max-age=300";
+  if (asJson) {
+    return new Response(JSON.stringify(sponsorsJson(list, links)), {
+      headers: { "Content-Type": "application/json", "Cache-Control": cache, "Access-Control-Allow-Origin": "*" },
+    });
+  }
+  return new Response(sponsorsPage(list, links), {
+    headers: {
+      ...PAGE_HEADERS,
+      "Cache-Control": cache,
+      // Like the leaderboard: no scripts, and images only from GitHub.
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' https://github.com https://avatars.githubusercontent.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    },
+  });
+}
+
 // Where Discord sends a member after they approve (or cancel) the /link request.
 async function handleLinkCallback(request: Request, env: Env): Promise<Response> {
   const outcome = await completeLink(env, getConfig(env), new URL(request.url).searchParams, new Date());
@@ -374,7 +410,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   // workers.dev address keep working by redirecting there.
   const publicUrl = getConfig(env).publicUrl;
   const onPublicHost = publicUrl !== "" && new URL(publicUrl).host === url.host;
-  if (read && pathname.startsWith("/leaderboard") && !onPublicHost && url.hostname.endsWith(".workers.dev") && publicUrl) {
+  const publicPage = pathname.startsWith("/leaderboard") || pathname === "/sponsors" || pathname === "/sponsors.json";
+  if (read && publicPage && !onPublicHost && url.hostname.endsWith(".workers.dev") && publicUrl) {
     return Response.redirect(`${publicUrl}${pathname}${url.search}`, 301);
   }
   if (read && pathname === "/" && onPublicHost) {
@@ -390,6 +427,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   const person = read ? CONTRIBUTOR_PATH.exec(pathname) : null;
   if (person) return handleContributor(request, env, ctx, person[1]!, person[2]!, person[3] !== undefined);
   if (request.method === "GET" && pathname === "/link/callback") return handleLinkCallback(request, env);
+  if (read && (pathname === "/sponsors" || pathname === "/sponsors.json")) return handleSponsors(request, env, pathname.endsWith(".json"));
   if (read && pathname === "/funding.json") {
     return new Response(JSON.stringify(fundingManifest, null, 2), {
       headers: {
@@ -420,7 +458,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 }
 
 // Mondays: the leaderboard of every running program, plus the learning streaks.
-// Any day: the final results of a program that has just ended, once.
+// Any day: the final results of a program that has just ended, once, and a
+// refresh of the sponsor list.
 async function dailyPosts(env: Env, cfg: Config, now: Date): Promise<void> {
   const monday = now.getUTCDay() === 1;
   // Each post on its own: one failing doesn't stop the rest. Failures are only
@@ -450,7 +489,12 @@ async function dailyPosts(env: Env, cfg: Config, now: Date): Promise<void> {
         const posted = `final:${program.id}`;
         if (await env.STATE.get(posted)) return;
         const board = await getLeaderboard(env, cfg, program, { fresh: true, fallback: false });
-        const members = await linkedMembers(env, board.rows.slice(0, 10).map((r) => r.login));
+        // Resolve linked accounts for every winner (who can be ranked below the
+        // displayed rows when topN is large) plus the rows shown in the embed, so
+        // nobody who linked is called unlinked. The weekly post stays top-10.
+        const shown = board.rows.slice(0, 10);
+        const linkedLogins = new Set([...shown, ...board.rows.filter((r) => r.winner)].map((r) => r.login));
+        const members = await linkedMembers(env, [...linkedLogins]);
         await sendMessage(
           env,
           env.CHANNEL_LEADERBOARD,
@@ -466,6 +510,12 @@ async function dailyPosts(env: Env, cfg: Config, now: Date): Promise<void> {
       });
     }
   }
+
+  // Once a day, so a sponsor who only stays a short while is remembered even
+  // when nobody opens /sponsors in that time.
+  await attempt("sponsors", async () => {
+    await refreshSponsors(env, cfg, now);
+  });
 
   // The streak board, as long as someone checked in during the past week.
   if (monday) {

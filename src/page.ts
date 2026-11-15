@@ -4,6 +4,7 @@ import type { Program } from "./config";
 import type { Leaderboard, LeaderboardRow } from "./leaderboard";
 import { BOARD_ROWS } from "./card";
 import { programStatus, type ProgramStatus } from "./programs";
+import type { SponsorList } from "./sponsors";
 
 export function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
@@ -131,6 +132,11 @@ main.wide{max-width:920px}
 .tile.accent b{color:var(--cyan)}
 .tile.text b{font-size:19px;line-height:1.45}
 h2.small{font:600 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+.sponsors{list-style:none;margin:0 0 32px;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.sponsors li{display:flex;align-items:center;gap:12px;min-width:0;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--raise)}
+.sponsors img{width:44px;height:44px;flex:none;border-radius:50%;background:var(--line)}
+.sponsors li.organization img{border-radius:10px}
+.sponsors .who span{display:block;font-size:12px;font-weight:400;color:var(--muted)}
 @media (max-width:520px){.tiles{grid-template-columns:1fr}.cta a{flex:1 1 100%;text-align:center}}
 footer{color:var(--muted);font-size:13px}
 @media (max-width:520px){.board summary{gap:8px}.rank{width:auto}.board img{width:28px;height:28px}.chip,.count-label{display:none}}
@@ -247,10 +253,89 @@ ${opts.linking ? `<p>We contact the winners by Discord DM. <a href="${escapeHtml
 <div class="cta">
 <a class="primary" href="${escapeHtml(links.issues)}">Find an issue</a>
 <a href="${escapeHtml(links.discord)}">Join the Discord</a>
+<a href="/sponsors">Our sponsors</a>
 <a href="https://www.codercops.com">Hire developers or get hired</a>
 </div>
 ${links.others.length ? `<section class="others">\n<h2>Other programs</h2>\n<ul>\n${links.others.map((o) => `<li><a href="${escapeHtml(o.path)}">${escapeHtml(o.title)}</a></li>`).join("\n")}\n</ul>\n</section>` : ""}
 <footer>Updated <time datetime="${escapeHtml(board.generatedAt)}">${escapeHtml(board.generatedAt.slice(0, 16).replace("T", " "))} UTC</time>. Refreshes every few minutes. <a href="/leaderboard/${escapeHtml(program.id)}.json">JSON</a></footer>
+</main>
+</body>
+</html>`;
+}
+
+export interface SponsorLinks {
+  /** The page's own permanent URL. */
+  self: string;
+  /** Where to become a sponsor. */
+  sponsor: string;
+  /** How sponsor money is spent. */
+  governance: string;
+}
+
+const month = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+
+export function sponsorsJson(list: SponsorList, links: SponsorLinks) {
+  return {
+    generatedAt: list.generatedAt || null,
+    becomeASponsor: links.sponsor,
+    sponsors: list.sponsors.map((s) => ({
+      login: s.login,
+      name: s.name,
+      kind: s.kind,
+      current: s.current,
+      since: s.firstSeen,
+      url: `https://github.com/${s.login}`,
+    })),
+  };
+}
+
+/** The list of everyone who sponsors the projects, with a way to join them. */
+export function sponsorsPage(list: SponsorList, links: SponsorLinks): string {
+  const description =
+    "The people and companies who pay for the hosting and maintainer time behind ChatCops, OGCOPS, toolbelt and the CODERCOPS bot.";
+  const items = list.sponsors
+    .map((s) => {
+      const login = encodeURIComponent(s.login);
+      const note = s.current ? `Since ${month(s.firstSeen)}` : "Recent sponsor";
+      return `<li class="${s.kind}"><img src="https://github.com/${login}.png?size=88" alt="" width="44" height="44" loading="lazy"><span class="who"><a href="https://github.com/${login}">${escapeHtml(s.name)}</a><span>${escapeHtml(note)}</span></span></li>`;
+    })
+    .join("\n");
+  const updated = list.generatedAt
+    ? `Updated <time datetime="${escapeHtml(list.generatedAt)}">${escapeHtml(list.generatedAt.slice(0, 16).replace("T", " "))} UTC</time>. Refreshes every few minutes. `
+    : "";
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sponsors of CODERCOPS open source</title>
+<meta name="description" content="${escapeHtml(description)}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Sponsors of CODERCOPS open source">
+<meta property="og:description" content="${escapeHtml(description)}">
+<meta property="og:url" content="${escapeHtml(links.self)}">
+<link rel="canonical" href="${escapeHtml(links.self)}">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>${STYLE}</style>
+</head>
+<body>
+<main>
+<p class="eyebrow">CODERCOPS open source</p>
+<h1>Sponsors</h1>
+<p class="lede">These people and companies pay for the hosting and the maintainer time behind ChatCops, OGCOPS, toolbelt and this bot. All four are free and MIT licensed, and CODERCOPS earns nothing from them.</p>
+${list.sponsors.length ? `<ul class="sponsors">\n${items}\n</ul>` : `<div class="board"><p class="empty">Nobody sponsors the projects yet. You could be the first.</p></div>`}
+<div class="cta">
+<a class="primary" href="${escapeHtml(links.sponsor)}">Sponsor on GitHub</a>
+<a href="${escapeHtml(links.governance)}">How the money is spent</a>
+<a href="/leaderboard">See the contributor leaderboard</a>
+</div>
+<section class="rules">
+<h2>How the list works</h2>
+<p>Anyone who sponsors us publicly on GitHub shows up here within a few minutes, with the name and picture from their GitHub profile. Private sponsors aren't listed.</p>
+<p>Monthly sponsors stay for as long as they sponsor. One-time sponsors, and anyone who stops, stay for two months after GitHub last listed them.</p>
+</section>
+<footer>${updated}<a href="/sponsors.json">JSON</a></footer>
 </main>
 </body>
 </html>`;
