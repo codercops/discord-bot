@@ -217,13 +217,22 @@ describe("leaderboardMessage", () => {
     expect(embed?.title).toBe("Hacktoberfest 2026 leaderboard: final results");
     expect(embed?.description).toContain("1. **ada** · 6 merged PRs · winner");
     expect(embed?.description).toContain(
-      "Congratulations to **ada**. We'll DM you on Discord with a private form for the shipping details, so we can send you a CODERCOPS T-shirt and stickers."
+      "Congratulations to **ada**. We'll DM you on Discord about a CODERCOPS T-shirt and stickers."
     );
     // Nothing about /link unless linking is on.
     expect(embed?.description).not.toContain("/link");
     // The countdown stops with the program.
     expect(embed?.description).toContain("2. **bob** · 2 merged PRs\n");
     expect(embed?.description).not.toContain("more to qualify");
+  });
+
+  // The line once promised a shipping form whatever the reward was, which made
+  // no sense for the monthly shout-outs.
+  it("words the winner line to fit a reward that isn't shipped", () => {
+    const shoutout = { ...program, reward: "a shout-out on our X and LinkedIn pages" };
+    const text = leaderboardMessage(board, shoutout, { final: true }).embeds?.[0]?.description ?? "";
+    expect(text).toContain("We'll DM you on Discord about a shout-out on our X and LinkedIn pages.");
+    expect(text).not.toContain("shipping");
   });
 
   it("says 'qualified' for qualifiers who didn't win once the program is over", () => {
@@ -235,12 +244,12 @@ describe("leaderboardMessage", () => {
     expect(running).toContain("2. **bob** · 5 merged PRs · qualifies");
   });
 
-  it("asks winners who haven't linked to run /link, since the form goes out by DM", () => {
+  it("asks winners who haven't linked to run /link, since we reach winners by DM", () => {
     const winners = { ...board, rows: [row("ada", 6, true, true), row("Bob", 5, true, true), row("cy", 5, true, true)] };
     const text = (members: Map<string, string>) =>
       leaderboardMessage(winners, program, { final: true, linking: true, members }).embeds?.[0]?.description;
     expect(text(new Map([["ada", "42"]]))).toContain(
-      "send you a CODERCOPS T-shirt and stickers. **Bob** and **cy**: run `/link` in this server so we know which Discord account is yours."
+      "about a CODERCOPS T-shirt and stickers. **Bob** and **cy**: run `/link` in this server so we know which Discord account is yours."
     );
     // Everyone linked: nothing to ask.
     expect(text(new Map([["ada", "42"], ["bob", "43"], ["cy", "44"]]))).not.toContain("/link");
