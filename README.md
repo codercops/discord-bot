@@ -9,6 +9,7 @@ The bot behind the open source channels on the [CODERCOPS Discord server](https:
 - **`/issues`** lists the open starter issues nobody has claimed yet, for one repo or one label if you pick them. **`/leaderboard`** shows who has the most merged PRs in a contributor program.
 - A **weekly leaderboard** is posted while a program is running, and the final results once it ends.
 - Every program has a public page, for example [CODERCOPS October 2026](https://oss.codercops.com/leaderboard/2026-10), with a JSON version next to it.
+- **Our sponsors** are listed at [oss.codercops.com/sponsors](https://oss.codercops.com/sponsors), straight from GitHub Sponsors.
 - Every contributor on a leaderboard has a **share card**: a page with their count and rank, and the same thing as an image that shows up when the link is posted on LinkedIn, X or Discord.
 - **New members get a welcome post** in `#introductions` that points them to the things they can do.
 - **`/link`** connects a member's GitHub account to their Discord account. Linked members appear by name next to their merged PRs, get the Contributor role with their first merged PR, and can run **`/me`** to see where they stand.
@@ -25,11 +26,12 @@ It runs on Cloudflare Workers. There is no server to keep alive and no Discord g
 | `GET /leaderboard/{id}`, `GET /leaderboard/{id}.json` | Anyone | One program's ranking as a page or as JSON. `/leaderboard` shows the current program. No scripts, no cookies, cached for five minutes. |
 | `GET /leaderboard/{id}/u/{login}`, and the same with `.png` | Anyone | One contributor's page in a program, and their share card as a 1200x630 image. |
 | `GET /funding.json`, `GET /.well-known/funding-manifest-urls` | Anyone | Our [funding.json](https://fundingjson.org) manifest, which funders like FLOSS/fund read, and the file that proves we publish it. The manifest lives in `src/funding.ts`. |
+| `GET /sponsors`, `GET /sponsors.json` | Anyone | Everyone who sponsors the accounts in `SPONSOR_ACCOUNTS` publicly on GitHub, as a page or as JSON. GitHub's GraphQL API takes no anonymous calls, so this needs `GITHUB_TOKEN`. Cached for ten minutes. |
 | `GET /link/callback` | Discord, after a member approves `/link` | Reads the member's verified GitHub connection, stores the link and hands out any role they've earned. |
 | cron | Cloudflare, every minute | Looks for members who just joined and welcomes them. |
-| cron | Cloudflare, every day at 04:30 UTC | On Mondays, posts the leaderboard of each running program and the learning streaks. On any day, posts the final results of a program that has just ended. |
+| cron | Cloudflare, every day at 04:30 UTC | On Mondays, posts the leaderboard of each running program and the learning streaks. On any day, posts the final results of a program that has just ended and refreshes the sponsor list. |
 
-A small KV namespace remembers which Discord message belongs to which issue, caches the leaderboards for a few minutes, and stores each learner's check-in progress and each member's GitHub link.
+A small KV namespace remembers which Discord message belongs to which issue, caches the leaderboards for a few minutes, stores each learner's check-in progress and each member's GitHub link, and remembers our sponsors.
 
 The code is split so the logic is easy to test:
 
@@ -41,6 +43,7 @@ The code is split so the logic is easy to test:
 - `src/page.ts` builds the public pages and the JSON. It has no I/O either.
 - `src/card.ts` lays out the share card as an SVG. `src/card-image.ts` turns it into a PNG with [resvg](https://github.com/yisibl/resvg-js) and the two fonts in `assets/fonts`; it's the only file that needs the Workers bundler, so the tests replace it.
 - `src/checkin.ts` holds the check-in rules and the streak ranking.
+- `src/sponsors.ts` reads our sponsors from GitHub and decides who stays on the list.
 - `src/welcome.ts` finds new members and greets them.
 - `src/oauth.ts`, `src/linking.ts`, `src/links.ts` and `src/roles.ts` are the GitHub link: the Discord OAuth2 calls, the callback, the stored link, and the roles that come with it.
 - `src/github.ts` and `src/discord.ts` are thin API clients.
@@ -155,7 +158,7 @@ Our copy runs from the `production` branch. Cloudflare Workers Builds deploys it
    ```bash
    npx wrangler secret put DISCORD_BOT_TOKEN
    npx wrangler secret put GITHUB_WEBHOOK_SECRET
-   npx wrangler secret put GITHUB_TOKEN   # optional, raises GitHub's rate limit
+   npx wrangler secret put GITHUB_TOKEN   # optional, raises GitHub's rate limit and turns on /sponsors
    ```
    `GITHUB_TOKEN` only reads public data, so a fine-grained token with "Public repositories" access and no permissions is enough. If your organization limits how long tokens may live, give it an expiry inside that limit. When GitHub refuses the token (expired, or blocked by the organization), the bot asks again without it.
 5. `npm run deploy`, then set the Worker's `/interactions` URL as the Interactions Endpoint URL of your Discord application.
