@@ -18,7 +18,8 @@ export const MANIFEST_URLS = [MANIFEST_URL, MIRROR_URL];
 const WELL_KNOWN = "https://oss.codercops.com/.well-known/funding-manifest-urls";
 
 // GitHub Sponsors for the org is added here once the codercops listing is live.
-const SPONSORS_URL = "https://github.com/sponsors/anurag629";
+// The Sponsor buttons on /sponsors and the leaderboard pages point here too.
+export const SPONSORS_URL = "https://github.com/sponsors/anurag629";
 
 const project = (
   guid: string,

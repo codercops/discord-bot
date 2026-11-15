@@ -105,8 +105,132 @@
         "minPrs": 3,
         "topN": 5,
         "reward": "a shout-out on our X and LinkedIn pages"
+      },
+      {
+        "id": "2027-02",
+        "title": "CODERCOPS February 2027",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2027-02-01T00:00:00Z",
+        "end": "2027-02-28T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
+      },
+      {
+        "id": "2027-03",
+        "title": "CODERCOPS March 2027",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2027-03-01T00:00:00Z",
+        "end": "2027-03-31T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
+      },
+      {
+        "id": "2027-04",
+        "title": "CODERCOPS April 2027",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2027-04-01T00:00:00Z",
+        "end": "2027-04-30T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
+      },
+      {
+        "id": "2027-05",
+        "title": "CODERCOPS May 2027",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2027-05-01T00:00:00Z",
+        "end": "2027-05-31T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
+      },
+      {
+        "id": "2027-06",
+        "title": "CODERCOPS June 2027",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2027-06-01T00:00:00Z",
+        "end": "2027-06-30T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
+      },
+      {
+        "id": "2027-07",
+        "title": "CODERCOPS July 2027",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2027-07-01T00:00:00Z",
+        "end": "2027-07-31T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
+      },
+      {
+        "id": "2027-08",
+        "title": "CODERCOPS August 2027",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2027-08-01T00:00:00Z",
+        "end": "2027-08-31T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
+      },
+      {
+        "id": "2027-09",
+        "title": "CODERCOPS September 2027",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2027-09-01T00:00:00Z",
+        "end": "2027-09-30T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
+      },
+      {
+        "id": "2027-10",
+        "title": "CODERCOPS October 2027",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2027-10-01T00:00:00Z",
+        "end": "2027-10-31T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
+      },
+      {
+        "id": "2027-11",
+        "title": "CODERCOPS November 2027",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2027-11-01T00:00:00Z",
+        "end": "2027-11-30T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
+      },
+      {
+        "id": "2027-12",
+        "title": "CODERCOPS December 2027",
+        "kind": "merged-prs",
+        "label": "codercops-accepted",
+        "start": "2027-12-01T00:00:00Z",
+        "end": "2027-12-31T23:59:59Z",
+        "minPrs": 3,
+        "topN": 5,
+        "reward": "a shout-out on our X and LinkedIn pages"
       }
     ],
+    // Whose GitHub sponsors are listed at /sponsors. The personal listing is
+    // where the Sponsor buttons point until the codercops one is approved.
+    "SPONSOR_ACCOUNTS": "codercops,anurag629",
     // Added to a program's final results post.
     "FINAL_RESULTS_NOTE": "Got a PR merged? That's a project for your CODERCOPS profile. Add your GitHub handle or the repo link at <https://app.codercops.com/signup>. Profiles are free.",
     // Where the public pages live. Used for links in Discord messages.
